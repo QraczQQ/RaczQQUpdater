@@ -1,2 +1,2 @@
 # RaczQQUpdater
-Plugin for DM2
+Updater Plugin for DreamboxTwo (Py2) with DreamOS
