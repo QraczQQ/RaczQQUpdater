@@ -1235,9 +1235,19 @@ class ArchiveScreen(Screen):
         backup_path = sel[2]
 
         cmd = (
-            'tar -xzf "{archive}" -C / && '
+            'for item in "{plugin_path}"/*; do '
+            '    [ ! -e "$item" ] && continue; '
+            '    [ "$item" = "{plugin_path}/backup" ] && continue; '
+            '    rm -rf "$item"; '
+            'done && '
+            'tar -xzf "{archive}" -C "{plugin_path}" && '
+            'find "{plugin_path}" -type d ! -path "{plugin_path}/backup" ! -path "{plugin_path}/backup/*" -exec chmod 755 {{}} \\; && '
+            'find "{plugin_path}" -type f ! -path "{plugin_path}/backup/*" -exec chmod 644 {{}} \\; && '
             'sync'
-        ).format(archive=backup_path)
+        ).format(
+            plugin_path=PLUGIN_PATH,
+            archive=backup_path
+        )
 
         run_command_in_background(
             self.session,
