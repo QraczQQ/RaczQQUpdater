@@ -460,6 +460,10 @@ class ChannelListUpdateMenu(Screen):
 
         url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
         tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
+        
+        cmd = 'wget --prefer-family=IPv4 --no-check-certificate -U "Enigma2" -q -T 15 -O "{dst}" "{url}"'.format(
+        dst=tmp_version_path,
+        url=url)
 
     def after_download():
         try:
