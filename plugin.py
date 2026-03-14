@@ -162,6 +162,7 @@ def _get_lists_from_repo_sync():
 
     return lists_menu
 
+
 class ChannelListUpdateMenu(Screen):
     skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,460" title="RaczQQ Updater">
             <widget source="list" render="Listbox" position="10,10" size="730,240" scrollbarMode="showOnDemand" transparent="1">
@@ -189,7 +190,7 @@ class ChannelListUpdateMenu(Screen):
 
 </screen>'''
 
-    def _read_local_version(default="unknown"):
+    def _read_local_version(self, default="unknown"):
         try:
             p = os.path.join(PLUGIN_PATH, "plugin.version")
             with open(p, "r") as f:
@@ -198,8 +199,108 @@ class ChannelListUpdateMenu(Screen):
         except Exception:
             return default
 
-    VER = _read_local_version("unknown")
+    VER = "unknown"
     DATE = str(datetime.date.today())
+
+    def _cleanup_tmp_plugin_dir(self):
+        try:
+            os.system("rm -rf /tmp/RaczQQUpdater/*")
+        except Exception as e:
+            print("[RaczQQ Updater] cleanup tmp error:", e)
+
+    def keyRed(self):
+        self.session.openWithCallback(
+            self._confirm_download_and_install_update,
+            MessageBox,
+            _("Pobrać i zainstalować aktualizację pluginu?"),
+            MessageBox.TYPE_YESNO
+        )
+
+    def _confirm_download_and_install_update(self, answer):
+        if answer:
+            self.download_and_install_update()
+
+    def download_and_install_update(self):
+        url = "https://github.com/QraczQQ/RaczQQUpdater/archive/refs/heads/main.zip"
+        zip_path = os.path.join(PLUGIN_TMP_PATH, "RaczQQUpdater-main.zip")
+        extract_path = os.path.join(PLUGIN_TMP_PATH, "RaczQQUpdater-main")
+
+        prepare_tmp_dir()
+
+        self["update"].setText(_("Pobieranie aktualizacji..."))
+
+        def error(msg):
+            print("[RaczQQ Updater] update error:", msg)
+            self["update"].setText(_("Błąd aktualizacji: {}").format(msg))
+            self.session.open(
+                MessageBox,
+                _("Błąd aktualizacji:\n{}").format(msg),
+                MessageBox.TYPE_ERROR,
+                timeout=6
+            )
+
+        def finish_ok():
+            self["update"].setText(_("Aktualizacja zakończona. Restart GUI..."))
+            self.session.open(TryQuitMainloop, 3)
+
+        def worker():
+            try:
+                try:
+                    if os.path.exists(zip_path):
+                        os.remove(zip_path)
+                except Exception:
+                    pass
+
+                try:
+                    if os.path.exists(extract_path):
+                        shutil.rmtree(extract_path, ignore_errors=True)
+                except Exception:
+                    pass
+
+                cmd = (
+                    'wget --prefer-family=IPv4 --no-check-certificate '
+                    '-U "Enigma2" -q -T 30 -O "{dst}" "{url}"'
+                ).format(dst=zip_path, url=url)
+
+                rc = os.system(cmd)
+                if rc != 0 or not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
+                    reactor.callFromThread(error, "nie udało się pobrać archiwum ZIP")
+                    return
+
+                try:
+                    zf = zipfile.ZipFile(zip_path, "r")
+                    zf.extractall(PLUGIN_TMP_PATH)
+                    zf.close()
+                except Exception as e:
+                    reactor.callFromThread(error, "błąd rozpakowania ZIP: %s" % e)
+                    return
+
+                src_root = os.path.join(PLUGIN_TMP_PATH, "RaczQQUpdater-main")
+                if not os.path.isdir(src_root):
+                    reactor.callFromThread(error, "brak katalogu RaczQQUpdater-main po rozpakowaniu")
+                    return
+
+                try:
+                    for name in os.listdir(src_root):
+                        src = os.path.join(src_root, name)
+                        dst = os.path.join(PLUGIN_PATH, name)
+
+                        if os.path.isdir(src):
+                            if os.path.exists(dst):
+                                shutil.rmtree(dst, ignore_errors=True)
+                            shutil.copytree(src, dst)
+                        else:
+                            shutil.copy2(src, dst)
+                except Exception as e:
+                    reactor.callFromThread(error, "błąd podmiany plików: %s" % e)
+                    return
+
+                reactor.callFromThread(finish_ok)
+
+            except Exception as e:
+                reactor.callFromThread(error, str(e))
+
+        Thread(target=worker).start()
 
 ####MENU####
     MENU_ITEMS = [
@@ -217,12 +318,15 @@ class ChannelListUpdateMenu(Screen):
         self["ram"] = Label("")
         self["iplocal"] = Label("")
         self["iptun"] = Label("")
+        self["update"] = Label("Sprawdzanie wersji online...")
 
         self["list"] = List(self.list)
         self["key_red"] = Label("Aktualizacja")
         self["key_green"] = Label("-")
         self["key_yellow"] = Label("Wyczyść TMP")
         self["key_blue"] = Label("Wyczyść RAM")
+        self.VER = self._read_local_version("unknown")
+        self.DATE = str(datetime.date.today())
         self["info"] = Label(
             "Updater by RaczQQ | Wersja: {} | Data: {} | Python: {}".format(
                 self.VER, self.DATE, "Py3" if IS_PY3 else "Py2"
@@ -237,11 +341,12 @@ class ChannelListUpdateMenu(Screen):
 
         self["actions"] = ActionMap(
             ["WizardActions", "ColorActions"],
-            {"red": self.check_updates, "yellow": self.clear_tmp_cache, "blue": self.clear_ram_memory, "ok": self.KeyOk, "back": self.close}
+            {"red": self.keyRed, "yellow": self.clear_tmp_cache, "blue": self.clear_ram_memory, "ok": self.KeyOk, "back": self.close}
         )
 
         self.onShown.append(self._start_health_timer)
         self.onClose.append(self._stop_health_timer)
+        self.onClose.append(self._cleanup_tmp_plugin_dir)
 
         self.updateList()
         self.check_updates(0)
@@ -318,21 +423,90 @@ class ChannelListUpdateMenu(Screen):
     def quit(self):
         self.close()
 
-    def errorUpdate(self, html):
-        message = _('Błąd sprawdzania nowej wersji. Serwer nie odpowiada.')
-        self.session.open(MessageBox, message, MessageBox.TYPE_INFO, 3)
+    def _read_version_file(self, path, default="unknown"):
+        try:
+            with open(path, "r") as f:
+                v = f.read().strip()
+            return v if v else default
+        except Exception:
+            return default
+
+    def _normalize_version(self, version_string):
+        v = (version_string or "").strip()
+        if not v:
+            return [0]
+
+        parts = re.findall(r'\d+', v)
+        if parts:
+            try:
+                return [int(x) for x in parts]
+            except Exception:
+                pass
+
+        return [0]
+
+    def _is_online_version_newer(self, local_ver, online_ver):
+        return self._normalize_version(online_ver) > self._normalize_version(local_ver)
+
+    def errorUpdate(self, failure=None):
+        self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
 
     def check_updates(self, tryb=0):
-        try:
-            self.url = 'https://raw.githubusercontent.com/QraczQQ/plugin/refs/heads/main/version.txt'
-            if tryb == 0:
-                getPage(self.url).addCallback(self.versionInfoCallBackQuiet).addErrback(self.errorUpdate)
-            else:
-                getPage(self.url).addCallback(self.versionInfoCallBack).addErrback(self.errorUpdate)
-        except Exception as error:
-            print("Error status:", error)
-            return _("Error status: %s") % str(error)
+        prepare_tmp_dir()
 
+        url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
+        tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
+
+        def after_download():
+            try:
+                local_version = self._read_local_version("unknown")
+                online_version = self._read_version_file(tmp_version_path, "unknown")
+
+                print("[RaczQQ Updater] local_version =", local_version)
+                print("[RaczQQ Updater] online_version =", online_version)
+                print("[RaczQQ Updater] tmp_version_path =", tmp_version_path)
+
+                status = _("Brak aktualizacji.")
+                if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
+                    status = _("Aktualizacja jest dostępna.")
+
+                self["update"].setText(
+                    _("Wersja online: {} | {}").format(online_version, status)
+                )
+            except Exception as e:
+                print("[RaczQQ Updater] after_download error:", e)
+                self["update"].setText(_("Wersja online: błąd odczytu | Brak informacji o aktualizacji"))
+
+        def run_check():
+            try:
+                if os.path.exists(tmp_version_path):
+                    os.remove(tmp_version_path)
+            except Exception as e:
+                print("[RaczQQ Updater] remove old tmp version error:", e)
+
+            cmd = (
+                'wget --prefer-family=IPv4 --no-check-certificate -U "Enigma2" '
+                '-q -T 15 -O "{dst}" "{url}"'
+            ).format(dst=tmp_version_path, url=url)
+
+            rc = os.system(cmd)
+
+            exists = os.path.exists(tmp_version_path)
+            size_ok = exists and os.path.getsize(tmp_version_path) > 0
+
+            print("[RaczQQ Updater] wget rc =", rc)
+            print("[RaczQQ Updater] tmp exists =", exists)
+            print("[RaczQQ Updater] tmp size_ok =", size_ok)
+
+            if rc == 0 and size_ok:
+                reactor.callFromThread(after_download)
+            else:
+                reactor.callFromThread(
+                    self["update"].setText,
+                    _("Wersja online: błąd pobierania | Brak informacji o aktualizacji")
+                )
+
+        Thread(target=run_check).start()
 
     def clear_ram_memory(self):
         os.system("sync; echo 3 > /proc/sys/vm/drop_caches")
@@ -340,7 +514,7 @@ class ChannelListUpdateMenu(Screen):
 
     def clear_tmp_cache(self):
         try:
-            os.system("rm -rf /tmp/*.ipk /tmp/*.zip /tmp/*.tar.gz /tmp/*.tgz")
+            os.system("rm -rf /tmp/*.ipk /tmp/*.zip /tmp/*.tar.gz /tmp/*.tgz /tmp/RaczQQUpdater/*")
             self.session.open(MessageBox, _("Wyczyszczono pamięć podręczną /tmp."), MessageBox.TYPE_INFO, timeout=3)
         except Exception as e:
             self.session.open(MessageBox, _("Błąd: {}".format(e)), MessageBox.TYPE_INFO, timeout=3)
