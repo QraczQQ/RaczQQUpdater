@@ -209,6 +209,15 @@ class ChannelListUpdateMenu(Screen):
             print("[RaczQQ Updater] cleanup tmp error:", e)
 
     def keyRed(self):
+        if not self.update_available:
+            self.session.open(
+                MessageBox,
+                _("Aktualizacja nie jest konieczna."),
+                MessageBox.TYPE_INFO,
+                timeout=3
+            )
+            return
+
         self.session.openWithCallback(
             self._confirm_download_and_install_update,
             MessageBox,
@@ -314,6 +323,7 @@ class ChannelListUpdateMenu(Screen):
         self.list = []
         self._prev_cpu = None
         self._health_timer = eTimer()
+        self.update_available = False
         self["cpu"] = Label("")
         self["ram"] = Label("")
         self["iplocal"] = Label("")
@@ -473,11 +483,13 @@ class ChannelListUpdateMenu(Screen):
                 print("[RaczQQ Updater] tmp_version_path =", tmp_version_path)
 
                 status = _("Brak aktualizacji.")
+                self.update_available = False
                 self["key_red"].hide()
                 self["update"].instance.setForegroundColor(parseColor("#ffffff"))
 
                 if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
                     status = _("Aktualizacja jest dostępna.")
+                    self.update_available = True
                     self["key_red"].show()
                     self["update"].instance.setForegroundColor(parseColor("#ff3333"))
 
