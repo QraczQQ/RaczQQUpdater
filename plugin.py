@@ -451,6 +451,7 @@ class ChannelListUpdateMenu(Screen):
 
     def errorUpdate(self, failure=None):
         self["key_red"].hide()
+        self["update"].instance.setForegroundColor(parseColor("#ffaa00"))
         self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
 
     def check_updates(self, tryb=0):
@@ -473,10 +474,12 @@ class ChannelListUpdateMenu(Screen):
 
                 status = _("Brak aktualizacji.")
                 self["key_red"].hide()
+                self["update"].instance.setForegroundColor(parseColor("#ffffff"))
 
                 if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
                     status = _("Aktualizacja jest dostępna.")
                     self["key_red"].show()
+                    self["update"].instance.setForegroundColor(parseColor("#ff3333"))
 
                 self["update"].setText(
                     _("Wersja online: {} | {}").format(online_version, status)
