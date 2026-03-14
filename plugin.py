@@ -452,18 +452,14 @@ class ChannelListUpdateMenu(Screen):
     def errorUpdate(self, failure=None):
         self["key_red"].hide()
         self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
-    def check_updates(self, tryb=0):
-        prepare_tmp_dir()
+def check_updates(self, tryb=0):
+    prepare_tmp_dir()
 
-        self["key_red"].hide()
-        self["update"].setText(_("Sprawdzanie wersji online..."))
+    self["key_red"].hide()
+    self["update"].setText(_("Sprawdzanie wersji online..."))
 
-        url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
-        tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
-        
-        cmd = 'wget --prefer-family=IPv4 --no-check-certificate -U "Enigma2" -q -T 15 -O "{dst}" "{url}"'.format(
-        dst=tmp_version_path,
-        url=url)
+    url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
+    tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
 
     def after_download():
         try:
@@ -513,10 +509,7 @@ class ChannelListUpdateMenu(Screen):
         if rc == 0 and size_ok:
             reactor.callFromThread(after_download)
         else:
-            def show_error():
-                self["key_red"].hide()
-                self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
-            reactor.callFromThread(show_error)
+            reactor.callFromThread(self.errorUpdate, None)
 
     Thread(target=run_check).start()
 
