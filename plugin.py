@@ -452,15 +452,14 @@ class ChannelListUpdateMenu(Screen):
     def errorUpdate(self, failure=None):
         self["key_red"].hide()
         self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
+    def check_updates(self, tryb=0):
+        prepare_tmp_dir()
 
-def check_updates(self, tryb=0):
-    prepare_tmp_dir()
+        self["key_red"].hide()
+        self["update"].setText(_("Sprawdzanie wersji online..."))
 
-    self["key_red"].hide()
-    self["update"].setText(_("Sprawdzanie wersji online..."))
-
-    url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
-    tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
+        url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
+        tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
 
     def after_download():
         try:
