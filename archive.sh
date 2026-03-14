@@ -16,6 +16,13 @@ SCIEZKA_ARCHIWUM="${SCIEZKA_TEMP}${NAZWA_ARCHIWUM}"
 
 echo "Przygotowywanie archiwum"
 
-tar -czvf "$SCIEZKA_ARCHIWUM" "$KATALOG"
+mkdir -p "$SCIEZKA_TEMP"
 
+tar -czvf "$SCIEZKA_ARCHIWUM" \
+    -C "$KATALOG" \
+    --exclude="./backup" \
+    --exclude="*/__pycache__" \
+    --exclude="*.pyc" \
+	--exclude="*.pyo" \
+    .
 sleep 2
