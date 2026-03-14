@@ -452,66 +452,67 @@ class ChannelListUpdateMenu(Screen):
     def errorUpdate(self, failure=None):
         self["key_red"].hide()
         self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
-def check_updates(self, tryb=0):
-    prepare_tmp_dir()
 
-    self["key_red"].hide()
-    self["update"].setText(_("Sprawdzanie wersji online..."))
+    def check_updates(self, tryb=0):
+        prepare_tmp_dir()
 
-    url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
-    tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
+        self["key_red"].hide()
+        self["update"].setText(_("Sprawdzanie wersji online..."))
 
-    def after_download():
-        try:
-            local_version = self._read_local_version("unknown")
-            online_version = self._read_version_file(tmp_version_path, "unknown")
+        url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
+        tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
 
-            print("[RaczQQ Updater] local_version =", local_version)
-            print("[RaczQQ Updater] online_version =", online_version)
-            print("[RaczQQ Updater] tmp_version_path =", tmp_version_path)
+        def after_download():
+            try:
+                local_version = self._read_local_version("unknown")
+                online_version = self._read_version_file(tmp_version_path, "unknown")
 
-            status = _("Brak aktualizacji.")
-            self["key_red"].hide()
+                print("[RaczQQ Updater] local_version =", local_version)
+                print("[RaczQQ Updater] online_version =", online_version)
+                print("[RaczQQ Updater] tmp_version_path =", tmp_version_path)
 
-            if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
-                status = _("Aktualizacja jest dostępna.")
-                self["key_red"].show()
+                status = _("Brak aktualizacji.")
+                self["key_red"].hide()
 
-            self["update"].setText(
-                _("Wersja online: {} | {}").format(online_version, status)
-            )
+                if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
+                    status = _("Aktualizacja jest dostępna.")
+                    self["key_red"].show()
 
-        except Exception as e:
-            print("[RaczQQ Updater] after_download error:", e)
-            self["key_red"].hide()
-            self["update"].setText(_("Wersja online: błąd odczytu | Brak informacji o aktualizacji"))
+                self["update"].setText(
+                    _("Wersja online: {} | {}").format(online_version, status)
+                )
 
-    def run_check():
-        try:
-            if os.path.exists(tmp_version_path):
-                os.remove(tmp_version_path)
-        except Exception as e:
-            print("[RaczQQ Updater] remove old tmp version error:", e)
+            except Exception as e:
+                print("[RaczQQ Updater] after_download error:", e)
+                self["key_red"].hide()
+                self["update"].setText(_("Wersja online: błąd odczytu | Brak informacji o aktualizacji"))
 
-        cmd = (
-            'wget --prefer-family=IPv4 --no-check-certificate '
-            '-U "Enigma2" -q -T 15 -O "{dst}" "{url}"'
-        ).format(dst=tmp_version_path, url=url)
+        def run_check():
+            try:
+                if os.path.exists(tmp_version_path):
+                    os.remove(tmp_version_path)
+            except Exception as e:
+                print("[RaczQQ Updater] remove old tmp version error:", e)
 
-        rc = os.system(cmd)
-        exists = os.path.exists(tmp_version_path)
-        size_ok = exists and os.path.getsize(tmp_version_path) > 0
+            cmd = (
+                'wget --prefer-family=IPv4 --no-check-certificate '
+                '-U "Enigma2" -q -T 15 -O "{dst}" "{url}"'
+            ).format(dst=tmp_version_path, url=url)
 
-        print("[RaczQQ Updater] wget rc =", rc)
-        print("[RaczQQ Updater] tmp exists =", exists)
-        print("[RaczQQ Updater] tmp size_ok =", size_ok)
+            rc = os.system(cmd)
+            exists = os.path.exists(tmp_version_path)
+            size_ok = exists and os.path.getsize(tmp_version_path) > 0
 
-        if rc == 0 and size_ok:
-            reactor.callFromThread(after_download)
-        else:
-            reactor.callFromThread(self.errorUpdate, None)
+            print("[RaczQQ Updater] wget rc =", rc)
+            print("[RaczQQ Updater] tmp exists =", exists)
+            print("[RaczQQ Updater] tmp size_ok =", size_ok)
 
-    Thread(target=run_check).start()
+            if rc == 0 and size_ok:
+                reactor.callFromThread(after_download)
+            else:
+                reactor.callFromThread(self.errorUpdate, None)
+
+        Thread(target=run_check).start()
 
     def clear_ram_memory(self):
         os.system("sync; echo 3 > /proc/sys/vm/drop_caches")
