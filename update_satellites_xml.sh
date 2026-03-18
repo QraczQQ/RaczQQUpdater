@@ -3,7 +3,7 @@
 
 TARGET="/etc/tuxbox/satellites.xml"
 VERSION="/etc/tuxbox/satellites.version"
-TMP_FILE="/RaczQQUpdater/satellites.xml"
+TMP_FILE="/tmp/RaczQQUpdater/satellites.xml"
 URL="http://raw.githubusercontent.com/OpenPLi/tuxbox-xml/master/xml/satellites.xml"
 
 progress() {
