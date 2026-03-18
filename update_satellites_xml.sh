@@ -74,6 +74,4 @@ fi
 progress 100
 status "Pobrano i zapisano satellites.xml pomyślnie"
 
-sleep 2
-
 exit 0
