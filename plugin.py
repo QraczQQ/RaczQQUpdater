@@ -395,10 +395,12 @@ class ChannelListUpdateMenu(Screen):
         self.session.open(channels)
 
     def update_sat(self):
+        script = os.path.join(PLUGIN_PATH, "update_satellites_xml.sh")
+        cmd = 'bash -c "sh {} ; sleep 3 ; exit"'.format(script)
         run_command_in_background(
             self.session,
             "Aktualizacja listy satelitów",
-            ["bash " + os.path.join(PLUGIN_PATH, "update_satellites_xml.sh")],
+            [cmd],
             callback_on_finish=self.reload_settings_python
         )
 
