@@ -979,7 +979,8 @@ def run_command_in_background(session, title, cmd_list, callback_on_finish=None)
         _finished,
         Console,
         title=title,
-        cmdlist=cmd_list
+        cmdlist=cmd_list,
+        closeOnSuccess = True
     )
 
 
