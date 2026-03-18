@@ -27,6 +27,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+clear
+
 progress 70
 status "Sprawdzanie pobranego pliku..."
 
@@ -46,6 +48,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+clear
 sync
 
 progress 95
@@ -70,6 +73,8 @@ if [ -f "/etc/enigma2/satellites.xml" ]; then
 else
     status "Brak /etc/enigma2/satellites.xml - pomijam"
 fi
+
+clear
 
 progress 100
 status "Pobrano i zapisano satellites.xml pomyślnie"
