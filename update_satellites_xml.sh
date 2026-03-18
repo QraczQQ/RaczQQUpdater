@@ -3,7 +3,7 @@
 
 TARGET="/etc/tuxbox/satellites.xml"
 VERSION="/etc/tuxbox/satellites.version"
-TMP_FILE="/tmp/satellites.xml.tmp"
+TMP_FILE="/RaczQQUpdater/satellites.xml"
 URL="http://raw.githubusercontent.com/OpenPLi/tuxbox-xml/master/xml/satellites.xml"
 
 progress() {
@@ -60,8 +60,20 @@ else
     status "Nie udało się odczytać wersji"
 fi
 
+if [ -f "/etc/enigma2/satellites.xml" ]; then
+    status "Usuwam /etc/enigma2/satellites.xml..."
+    rm -f "/etc/enigma2/satellites.xml"
+    if [ $? -ne 0 ]; then
+        status "Błąd: nie udało się usunąć /etc/enigma2/satellites.xml"
+        exit 1
+    fi
+else
+    status "Brak /etc/enigma2/satellites.xml - pomijam"
+fi
+
 progress 100
 status "Pobrano i zapisano satellites.xml pomyślnie"
 
-exit 0
+sleep 2
 
+exit 0
