@@ -394,7 +394,73 @@ class ChannelListUpdateMenu(Screen):
     def open_channels(self):
         self.session.open(channels)
 
-    def update_sat(self):
+    def _read_first_line(self, path, default="unknown"):
+        try:
+            with open(path, "r") as f:
+                value = f.readline().strip()
+            return value if value else default
+        except Exception:
+            return default
+
+    def _normalize_date_version(self, value):
+        value = (value or "").strip()
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', value):
+            return value
+        return "unknown"
+
+    def _extract_sat_version_from_xml(self, path):
+        try:
+            cmd = 'grep File "{0}" | cut -d \' \' -f8 | cut -d \'T\' -f1'.format(path)
+            p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = p.communicate()
+            if p.returncode != 0:
+                return "unknown"
+            if not isinstance(out, str):
+                out = out.decode("utf-8", "ignore")
+            return self._normalize_date_version(out.strip())
+        except Exception:
+            return "unknown"
+
+    def _sat_date_tuple(self, value):
+        norm = self._normalize_date_version(value)
+        if norm == "unknown":
+            return None
+        try:
+            return tuple(map(int, norm.split("-")))
+        except Exception:
+            return None
+
+    def _is_sat_online_newer(self, installed_ver, online_ver):
+        installed = self._sat_date_tuple(installed_ver)
+        online = self._sat_date_tuple(online_ver)
+        if installed is None or online is None:
+            return False
+        return online > installed
+
+    def _fetch_online_sat_version(self):
+        tmp_sat_path = os.path.join(PLUGIN_TMP_PATH, "satellites_online.xml")
+        url = "http://raw.githubusercontent.com/OpenPLi/tuxbox-xml/master/xml/satellites.xml"
+
+        prepare_tmp_dir()
+
+        try:
+            if os.path.exists(tmp_sat_path):
+                os.remove(tmp_sat_path)
+        except Exception:
+            pass
+
+        cmd = (
+            'wget --prefer-family=IPv4 --no-check-certificate '
+            '-U "Enigma2" -q -T 15 -O "{dst}" "{url}"'
+        ).format(dst=tmp_sat_path, url=url)
+
+        rc = os.system(cmd)
+        if rc != 0 or not os.path.exists(tmp_sat_path) or os.path.getsize(tmp_sat_path) == 0:
+            return None
+
+        return self._extract_sat_version_from_xml(tmp_sat_path)
+
+    def _run_sat_update(self):
         script = os.path.join(PLUGIN_PATH, "update_satellites_xml.sh")
         cmd = 'bash -c "sh {} ; sleep 3 ; exit"'.format(script)
         run_command_in_background(
@@ -403,6 +469,55 @@ class ChannelListUpdateMenu(Screen):
             [cmd],
             callback_on_finish=self.reload_settings_python
         )
+
+    def _show_sat_update_summary(self, online_version):
+        installed_version = self._normalize_date_version(
+            self._read_first_line("/etc/tuxbox/satellites.version", "unknown")
+        )
+        xml_version = self._extract_sat_version_from_xml("/etc/tuxbox/satellites.xml")
+
+        online_display = online_version if online_version and online_version != "unknown" else "nieznana"
+        installed_display = installed_version if installed_version != "unknown" else "nieznana"
+        xml_display = xml_version if xml_version != "unknown" else "nieznana"
+
+        msg = (
+            "Wersja dostępna online: {}\n"
+            "Wersja zainstalowana: {}\n"
+            "Wersja z satellites.xml: {}"
+        ).format(online_display, installed_display, xml_display)
+
+        if self._is_sat_online_newer(installed_version, online_version):
+            self.session.openWithCallback(
+                self._confirm_sat_update,
+                MessageBox,
+                msg + "\n\nDostępna jest nowsza wersja. Czy chcesz zaktualizować?",
+                MessageBox.TYPE_YESNO
+            )
+        else:
+            self.session.open(
+                MessageBox,
+                msg + "\n\nAktualizacja nie jest wymagana",
+                MessageBox.TYPE_INFO,
+                timeout=10
+            )
+
+    def _confirm_sat_update(self, answer):
+        if answer:
+            self._run_sat_update()
+
+    def update_sat(self):
+        self.session.open(
+            MessageBox,
+            "Sprawdzanie wersji satellites.xml...",
+            MessageBox.TYPE_INFO,
+            timeout=2
+        )
+
+        def worker():
+            online_version = self._fetch_online_sat_version()
+            reactor.callFromThread(self._show_sat_update_summary, online_version)
+
+        Thread(target=worker).start()
 
     def open_archive(self):
         self.session.open(ArchiveScreen)
@@ -1063,7 +1178,7 @@ class ArchiveScreen(Screen):
     </screen>
     """
 
-    BACKUP_DIR = os.path.join(PLUGIN_PATH, "backup")
+    BACKUP_DIR = "/data/RaczQQUpdater/backup"
 
     def __init__(self, session):
         Screen.__init__(self, session)
