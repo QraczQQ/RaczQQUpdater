@@ -1,7 +1,7 @@
 #!/bin/bash
 
 KATALOG="/usr/lib/enigma2/python/Plugins/Extensions/RaczQQUpdater"
-SCIEZKA_TEMP="$KATALOG/backup/"
+SCIEZKA_TEMP="/data/RaczQQUpdater/backup/"
 VER_FILE="$KATALOG/plugin.version"
 
 if [ -r "$VER_FILE" ]; then
