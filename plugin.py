@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 
 # === STANDARD LIBRARY ===
-import ConfigParser
+try:
+    import ConfigParser
+except ImportError:  # Py3
+    import configparser as ConfigParser
 import datetime
 import io
 import json
@@ -19,10 +22,9 @@ from threading import Thread
 
 # === TWISTED ===
 from twisted.internet import reactor
-from twisted.web.client import downloadPage, getPage
 
 # === ENIGMA2 CORE ===
-from enigma import eDVBDB, eTimer, getDesktop, gFont, RT_HALIGN_LEFT, RT_VALIGN_CENTER
+from enigma import eDVBDB, eTimer, getDesktop, gFont, RT_HALIGN_LEFT, RT_VALIGN_CENTER, RT_VALIGN_TOP, BT_SCALE, BT_KEEP_ASPECT_RATIO
 
 # === SCREENS ===
 from Screens.Console import Console
@@ -34,14 +36,11 @@ from Screens.Standby import TryQuitMainloop
 # === COMPONENTS ===
 from Components.ActionMap import ActionMap
 from Components.Label import Label
-from Components.PluginList import resolveFilename
 from Components.Sources.List import List
-from Components.Sources.Progress import Progress
 from Components.Sources.StaticText import StaticText
 
 # === TOOLS ===
-from Tools.Directories import SCOPE_PLUGINS, fileExists
-from Tools.Downloader import downloadWithProgress
+from Tools.Directories import SCOPE_PLUGINS, resolveFilename
 from Tools.LoadPixmap import LoadPixmap
 
 # === PLUGINS ===
@@ -58,6 +57,17 @@ try:
     _unicode_type = unicode
 except Exception:
     _unicode_type = str
+
+try:
+    _bytes_type = bytes
+except Exception:
+    _bytes_type = str
+
+try:
+    _
+except NameError:
+    def _(txt):
+        return txt
 
 def ensure_unicode(val):
     """Return a text (unicode on Py2) representation for safe internal processing."""
@@ -83,6 +93,55 @@ def ensure_unicode(val):
     except Exception:
         return ""
 
+
+
+def ensure_str(val, encoding="utf-8"):
+    """Return native str for current Python version."""
+    if val is None:
+        return ""
+    if IS_PY2:
+        try:
+            if isinstance(val, str):
+                return val
+            if isinstance(val, _unicode_type):
+                return val.encode(encoding, "ignore")
+        except Exception:
+            pass
+        try:
+            return str(val)
+        except Exception:
+            return ""
+    try:
+        if isinstance(val, _bytes_type):
+            return val.decode(encoding, "ignore")
+    except Exception:
+        pass
+    try:
+        return str(val)
+    except Exception:
+        return ""
+
+
+def read_text_file(path, default="", encoding="utf-8"):
+    try:
+        with io.open(path, "r", encoding=encoding, errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return default
+
+
+def read_first_line(path, default="", encoding="utf-8"):
+    try:
+        with io.open(path, "r", encoding=encoding, errors="ignore") as f:
+            value = f.readline().strip()
+        return value if value else default
+    except Exception:
+        return default
+
+
+def write_text_file(path, content, encoding="utf-8"):
+    with io.open(path, "w", encoding=encoding) as f:
+        f.write(ensure_unicode(content))
 PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
 PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
@@ -164,16 +223,16 @@ def _get_lists_from_repo_sync():
 
 
 class ChannelListUpdateMenu(Screen):
-    skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,460" title="RaczQQ Updater">
+    skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,620" title="RaczQQ Updater">
             <widget source="list" render="Listbox" position="10,10" size="730,240" scrollbarMode="showOnDemand" transparent="1">
                 <convert type="TemplatedMultiContent">
                 {"template": [
-                    MultiContentEntryText(pos = (115, 2), size = (620, 26), font=0, color=0xd282ff, flags = RT_HALIGN_LEFT, text = 0),
-                    MultiContentEntryPixmapAlphaBlend(pos = (2, 5), size = (100, 40), png = 1),
-                    MultiContentEntryText(pos = (115, 30), size = (620, 26), font=1, flags = RT_VALIGN_TOP | RT_HALIGN_LEFT, text = 3),
+                    MultiContentEntryText(pos = (70, 2), size = (660, 26), font=0, color=0xd282ff, flags = RT_HALIGN_LEFT, text = 0),
+                    MultiContentEntryPixmapAlphaBlend(pos = (10, 6), size = (48, 48), png = 1, flags = BT_SCALE | BT_KEEP_ASPECT_RATIO),
+                    MultiContentEntryText(pos = (70, 30), size = (660, 26), font=1, flags = RT_VALIGN_TOP | RT_HALIGN_LEFT, text = 3),    
                     ],
                     "fonts": [gFont("Regular", 24),gFont("Regular", 22)],
-                    "itemHeight": 60
+                    "itemHeight": 62
                 }
                 </convert>
             </widget>
@@ -187,20 +246,60 @@ class ChannelListUpdateMenu(Screen):
 <widget name="ram" position="136,417" size="125,30" font="Regular;22" halign="left" foregroundColor="#55ff55" backgroundColor="black" />
 <widget name="iplocal" position="267,417" size="205,30" font="Regular;22" halign="left" foregroundColor="#55aaff" backgroundColor="black" />
 <widget name="iptun" position="477,417" size="205,30" font="Regular;22" halign="left" foregroundColor="#ffaa00" backgroundColor="black" />
+<widget name="readme_title" position="5,475" size="740,25" font="Regular;22" halign="left" foregroundColor="#d282ff" backgroundColor="black" />
+<widget name="readme" position="5,500" size="740,120" font="Regular;20" halign="left" valign="top" foregroundColor="#ffffff" backgroundColor="black" />
 
 </screen>'''
 
     def _read_local_version(self, default="unknown"):
         try:
             p = os.path.join(PLUGIN_PATH, "plugin.version")
-            with open(p, "r") as f:
-                v = f.read().strip()
+            v = read_text_file(p, default="", encoding="utf-8").strip()
             return v if v else default
         except Exception:
             return default
 
     VER = "unknown"
     DATE = str(datetime.date.today())
+
+    def _read_readme_text(self):
+        readme_paths = [
+            os.path.join(PLUGIN_PATH, "README.MD"),
+            os.path.join(PLUGIN_PATH, "README.md"),
+            os.path.join(PLUGIN_PATH, "readme.md"),
+        ]
+
+        content = ""
+        for path in readme_paths:
+            if os.path.exists(path):
+                content = read_text_file(path, default="", encoding="utf-8")
+                if content:
+                    break
+
+        content = ensure_unicode(content).replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not content:
+            return _("Brak pliku README.MD albo plik jest pusty.")
+
+        lines = []
+        for line in content.split("\n"):
+            line = re.sub(r'^\s*#+\s*', '', ensure_unicode(line))
+            line = line.replace('**', '').replace('__', '').replace('`', '')
+            line = line.replace('* ', u'• ')
+            line = re.sub(r'\[(.*?)\]\((.*?)\)', r'\1', line)
+            line = re.sub(r'\s+', ' ', line).strip()
+            if line:
+                lines.append(line)
+
+        text_out = "\n".join(lines[:6])
+        if len(lines) > 6:
+            text_out += "\n..."
+        return text_out
+
+    def _refresh_readme(self):
+        try:
+            self["readme"].setText(self._read_readme_text())
+        except Exception as e:
+            self["readme"].setText(_("Błąd odczytu README.MD: {}").format(e))
 
     def _cleanup_tmp_plugin_dir(self):
         try:
@@ -344,6 +443,8 @@ class ChannelListUpdateMenu(Screen):
             )
         )
         self["health"] = Label("")
+        self["readme_title"] = Label("Informacje o RaczQQ Updater")
+        self["readme"] = Label("")
 
         try:
             self._health_timer_conn = self._health_timer.timeout.connect(self._update_health)
@@ -360,6 +461,7 @@ class ChannelListUpdateMenu(Screen):
         self.onClose.append(self._cleanup_tmp_plugin_dir)
 
         self.updateList()
+        self._refresh_readme()
         self.check_updates(0)
         self._update_health()
 
@@ -396,8 +498,7 @@ class ChannelListUpdateMenu(Screen):
 
     def _read_first_line(self, path, default="unknown"):
         try:
-            with open(path, "r") as f:
-                value = f.readline().strip()
+            value = read_first_line(path, default="", encoding="utf-8")
             return value if value else default
         except Exception:
             return default
@@ -553,8 +654,7 @@ class ChannelListUpdateMenu(Screen):
 
     def _read_version_file(self, path, default="unknown"):
         try:
-            with open(path, "r") as f:
-                v = f.read().strip()
+            v = read_text_file(path, default="", encoding="utf-8").strip()
             return v if v else default
         except Exception:
             return default
@@ -999,8 +1099,8 @@ class ManifestChannelsScreen(Screen):
 
             if len(e2) > 1:
                 t_bq = os.path.join(PLUGIN_TMP_PATH, bid)
-                with open(t_bq, 'w') as f:
-                    f.writelines(e2)
+                with io.open(t_bq, 'w', encoding='utf-8') as f:
+                    f.writelines([ensure_unicode(x) for x in e2])
                 reactor.callFromThread(self._install_parsed_bouquet, t_bq, bid)
         except Exception as e:
             print("[RaczQQ Updater] _parse_m3u_thread error:", e)
@@ -1088,70 +1188,16 @@ def run_command_in_background(session, title, cmd_list, callback_on_finish=None)
             try:
                 callback_on_finish()
             except Exception:
-                pass
+                traceback.print_exc()
 
     session.openWithCallback(
         _finished,
         Console,
         title=title,
         cmdlist=cmd_list,
-        closeOnSuccess = True
+        closeOnSuccess=True
     )
 
-
-    def worker():
-        rc = 0
-        err = ""
-
-        try:
-            for cmd in cmd_list:
-                p = subprocess.Popen(
-                    cmd,
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                out, stderr = p.communicate()
-                rc = p.returncode
-
-                if rc != 0:
-                    try:
-                        err = stderr.decode("utf-8", "ignore")
-                    except Exception:
-                        err = str(stderr)
-                    break
-        except Exception as e:
-            rc = 1
-            err = str(e)
-
-        def finish():
-            try:
-                wait_message.close()
-            except Exception:
-                pass
-
-            if rc == 0:
-                if callback_on_finish:
-                    try:
-                        callback_on_finish()
-                    except Exception as e:
-                        session.open(
-                            MessageBox,
-                            "Błąd po wykonaniu:\n%s" % str(e),
-                            MessageBox.TYPE_ERROR,
-                            timeout=8
-                        )
-            else:
-                session.open(
-                    MessageBox,
-                    "Błąd wykonywania:\n%s" % (err or "Nieznany błąd"),
-                    MessageBox.TYPE_ERROR,
-                    timeout=8
-                )
-
-        reactor.callFromThread(finish)
-
-    Thread(target=worker).start()
 
 class ArchiveScreen(Screen):
     skin = """
@@ -1237,7 +1283,7 @@ class ArchiveScreen(Screen):
             if version_member is not None:
                 f = tar.extractfile(version_member)
                 if f is not None:
-                    version = f.read().strip()
+                    version = ensure_unicode(f.read()).strip()
                     tar.close()
                     if version:
                         return version
