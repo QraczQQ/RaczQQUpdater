@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# === STANDARD LIBRARY ===
-try:
-    import ConfigParser
-except ImportError:  # Py3
-    import configparser as ConfigParser
 import datetime
 import io
 import json
@@ -20,47 +15,40 @@ import traceback
 import zipfile
 from threading import Thread
 
-# === TWISTED ===
 from twisted.internet import reactor
 
-# === ENIGMA2 CORE ===
-from enigma import eDVBDB, eTimer, getDesktop, gFont, RT_HALIGN_LEFT, RT_VALIGN_CENTER, RT_VALIGN_TOP, BT_SCALE, BT_KEEP_ASPECT_RATIO
+from enigma import (
+    eDVBDB,
+    eTimer,
+    getDesktop,
+    gFont,
+    RT_HALIGN_LEFT,
+    RT_VALIGN_CENTER,
+    RT_VALIGN_TOP,
+    BT_SCALE,
+    BT_KEEP_ASPECT_RATIO,
+)
 
-# === SCREENS ===
 from Screens.Console import Console
 from Screens.InfoBar import InfoBar
 from Screens.MessageBox import MessageBox
 from Screens.Screen import Screen
 from Screens.Standby import TryQuitMainloop
 
-# === COMPONENTS ===
 from Components.ActionMap import ActionMap
 from Components.Label import Label
 from Components.Sources.List import List
 from Components.Sources.StaticText import StaticText
+from Components.ProgressBar import ProgressBar
 
-# === TOOLS ===
 from Tools.Directories import SCOPE_PLUGINS, resolveFilename
 from Tools.LoadPixmap import LoadPixmap
 
-PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
-if PLUGIN_PATH not in sys.path:
-    sys.path.append(PLUGIN_PATH)
-
-from picony import PiconyScreen
-from conf_backup import ConfBackupScreen
-
-PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
-
-# === PLUGINS ===
 from Plugins.Plugin import PluginDescriptor
-
-# === SKIN ===
 from skin import parseColor
 
-# Wykrywanie wersji Pythona
 IS_PY2 = sys.version_info[0] < 3
-IS_PY3 = sys.version_info[0] >= 3
+IS_PY3 = not IS_PY2
 
 try:
     _unicode_type = unicode
@@ -68,21 +56,23 @@ except Exception:
     _unicode_type = str
 
 try:
-    _bytes_type = bytes
-except Exception:
-    _bytes_type = str
-
-try:
     _
 except NameError:
     def _(txt):
         return txt
 
-# Wersja pluginu trzymana bezpośrednio w plugin.py
 PLUGIN_VERSION = "1.2.1"
+PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
+PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
+
+if PLUGIN_PATH not in sys.path:
+    sys.path.append(PLUGIN_PATH)
+
+from picony import PiconyScreen
+from conf_backup import ConfBackupScreen
+
 
 def ensure_unicode(val):
-    """Return a text (unicode on Py2) representation for safe internal processing."""
     if val is None:
         return u"" if IS_PY2 else ""
     if IS_PY2:
@@ -91,7 +81,6 @@ def ensure_unicode(val):
                 return val
         except Exception:
             pass
-        # bytes -> unicode
         try:
             return val.decode("utf-8", "ignore")
         except Exception:
@@ -99,35 +88,6 @@ def ensure_unicode(val):
                 return _unicode_type(str(val), "utf-8", "ignore")
             except Exception:
                 return u""
-    # Py3
-    try:
-        return str(val)
-    except Exception:
-        return ""
-
-
-
-def ensure_str(val, encoding="utf-8"):
-    """Return native str for current Python version."""
-    if val is None:
-        return ""
-    if IS_PY2:
-        try:
-            if isinstance(val, str):
-                return val
-            if isinstance(val, _unicode_type):
-                return val.encode(encoding, "ignore")
-        except Exception:
-            pass
-        try:
-            return str(val)
-        except Exception:
-            return ""
-    try:
-        if isinstance(val, _bytes_type):
-            return val.decode(encoding, "ignore")
-    except Exception:
-        pass
     try:
         return str(val)
     except Exception:
@@ -151,17 +111,6 @@ def read_first_line(path, default="", encoding="utf-8"):
         return default
 
 
-def write_text_file(path, content, encoding="utf-8"):
-    with io.open(path, "w", encoding=encoding) as f:
-        f.write(ensure_unicode(content))
-
-
-def reload(self, answer):
-    if answer is True:
-        TryQuitMainloop(self.session, 3)  # 0=Toggle Standby ; 1=Deep Standby ; 2=Reboot System ; 3=Restart Enigma ; 4=Wake Up ; 5=Enter Standby
-    else:
-        return
-
 def prepare_tmp_dir():
     if not os.path.exists(PLUGIN_TMP_PATH):
         try:
@@ -169,18 +118,34 @@ def prepare_tmp_dir():
         except OSError as e:
             print("[RaczQQ Updater] Error creating tmp dir:", e)
 
+
+def run_command_in_background(session, title, cmd_list, callback_on_finish=None):
+    def _finished(*args):
+        if callback_on_finish:
+            try:
+                callback_on_finish()
+            except Exception:
+                traceback.print_exc()
+
+    session.openWithCallback(
+        _finished,
+        Console,
+        title=title,
+        cmdlist=cmd_list,
+        closeOnSuccess=True
+    )
+
+
 def _get_lists_from_repo_sync():
     manifest_url = "https://raw.githubusercontent.com/OliOli2013/PanelAIO-Lists/main/manifest.json"
     tmp_json_path = os.path.join(PLUGIN_TMP_PATH, 'manifest.json')
     prepare_tmp_dir()
     try:
-        # identyczna logika jak w org.py
-        cmd = "wget --prefer-family=IPv4 --no-check-certificate -U \"Enigma2\" -q -T 20 -O {} {}".format(tmp_json_path, manifest_url)
+        cmd = 'wget --prefer-family=IPv4 --no-check-certificate -U "Enigma2" -q -T 20 -O "{}" "{}"'.format(tmp_json_path, manifest_url)
         process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         _, stderr = process.communicate()
-        ret_code = process.returncode
-        if ret_code != 0:
-            print("[RaczQQ Updater] Wget error downloading manifest (code {}): {}".format(ret_code, stderr))
+        if process.returncode != 0:
+            print("[RaczQQ Updater] Wget error downloading manifest (code {}): {}".format(process.returncode, stderr))
             return []
         if not (os.path.exists(tmp_json_path) and os.path.getsize(tmp_json_path) > 0):
             print("[RaczQQ Updater] Błąd pobierania manifest.json: plik pusty lub nie istnieje")
@@ -208,28 +173,117 @@ def _get_lists_from_repo_sync():
                 menu_title = "{} - {} (Dodaj Bukiet M3U)".format(name, author)
                 action = "m3u:{}:{}:{}".format(url, bouquet_id, name)
                 lists_menu.append((menu_title, action))
-
             elif item_type == "BOUQUET":
                 bouquet_id = item.get('bouquet_id', 'userbouquet.imported_ref.tv')
                 menu_title = "{} - {} (Dodaj Bukiet REF)".format(name, author)
                 action = "bouquet:{}:{}:{}".format(url, bouquet_id, name)
                 lists_menu.append((menu_title, action))
-
             else:
                 version = item.get('version', '')
                 menu_title = "{} - {} ({})".format(name, author, version)
                 action = "archive:{}".format(url)
                 lists_menu.append((menu_title, action))
-
     except Exception as e:
         print("[RaczQQ Updater] Błąd przetwarzania pliku manifest.json:", e)
         return []
 
-    if not lists_menu:
-        print("[RaczQQ Updater] Brak list w repozytorium (manifest pusty?)")
-        return []
-
     return lists_menu
+
+class SatellitesUpdateProgress(Screen):
+    skin = '''
+    <screen name="SatellitesUpdateProgress" position="center,center" size="700,190" title="Aktualizacja satellites.xml">
+        <widget name="title" position="20,15" size="660,30" font="Regular;26" halign="center" />
+        <widget name="status" position="20,60" size="660,30" font="Regular;22" halign="center" />
+        <widget name="progress" position="40,110" size="620,24" />
+        <widget name="percent" position="20,145" size="660,24" font="Regular;20" halign="center" />
+    </screen>'''
+
+    def __init__(self, session, plugin_screen):
+        Screen.__init__(self, session)
+        self.session = session
+        self.plugin_screen = plugin_screen
+
+        self["title"] = Label(_("Aktualizacja satellites.xml"))
+        self["status"] = Label(_("Przygotowanie..."))
+        self["progress"] = ProgressBar()
+        self["percent"] = Label("0%")
+
+        self["progress"].setValue(0)
+
+        self["actions"] = ActionMap(
+            ["OkCancelActions"],
+            {
+                "cancel": self.blockClose,
+                "back": self.blockClose,
+            },
+            -1
+        )
+
+        self._restart_timer = eTimer()
+        try:
+            self._restart_timer.timeout.connect(self._doRestart)
+        except Exception:
+            self._restart_timer.callback.append(self._doRestart)
+
+        self.onShown.append(self.startUpdate)
+
+    def blockClose(self):
+        pass
+
+    def setProgress(self, value, status_text=None):
+        try:
+            value = max(0, min(100, int(value)))
+        except Exception:
+            value = 0
+        self["progress"].setValue(value)
+        self["percent"].setText("%d%%" % value)
+        if status_text is not None:
+            self["status"].setText(status_text)
+
+    def startUpdate(self):
+        self.plugin_screen._run_sat_update_with_progress(self)
+
+    def finishError(self, msg):
+        self.close()
+        self.session.open(
+            MessageBox,
+            _("Błąd aktualizacji satellites.xml:\n%s") % msg,
+            MessageBox.TYPE_ERROR,
+            timeout=8
+        )
+
+    def finishSuccess(self, ver):
+        self.setProgress(100, _("Zakończono"))
+
+        try:
+            self.plugin_screen["update"].setText(_("satellites.xml zaktualizowany: %s") % ver)
+        except Exception:
+            pass
+
+        self.close()
+
+        self.session.open(
+            MessageBox,
+            _("Aktualizacja satellites.xml zakończona.\nWersja: %s\n\nRestart GUI zostanie wykonany za 3 sekundy.") % ver,
+            MessageBox.TYPE_INFO,
+            timeout=3
+        )
+
+        try:
+            self._restart_timer.start(3000, True)
+        except Exception as e:
+            print("[RaczQQ Updater] restart timer start error:", e)
+
+    def _doRestart(self):
+        try:
+            self._restart_timer.stop()
+        except Exception:
+            pass
+
+        try:
+            self.session.open(TryQuitMainloop, 3)
+        except Exception as e:
+            print("[RaczQQ Updater] restart gui error:", e)
 
 
 class ChannelListUpdateMenu(Screen):
@@ -241,51 +295,106 @@ class ChannelListUpdateMenu(Screen):
                     MultiContentEntryPixmapAlphaBlend(pos = (10, 6), size = (48, 48), png = 1, flags = BT_SCALE | BT_KEEP_ASPECT_RATIO),
                     MultiContentEntryText(pos = (70, 30), size = (660, 24), font=1, flags = RT_VALIGN_TOP | RT_HALIGN_LEFT, text = 3),
                     ],
-                    "fonts": [gFont("Regular", 24), gFont("Regular", 21)],
+                    "fonts": [gFont("Regular", 24),gFont("Regular", 21)],
                     "itemHeight": 60
                 }
                 </convert>
             </widget>
+<widget name="key_red" position="70,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
+<widget name="key_green" position="220,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3d9b4f" />
+<widget name="key_yellow" position="370,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
+<widget name="key_blue" position="520,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+<widget name="update" position="10,302" size="730,30" font="Regular;21" halign="center" backgroundColor="black" />
+<widget name="info" position="10,336" size="730,28" font="Regular;20" halign="center" backgroundColor="black" />
+<widget name="cpu" position="10,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#ff5555" backgroundColor="black" />
+<widget name="ram" position="135,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#55ff55" backgroundColor="black" />
+<widget name="iplocal" position="260,372" size="220,26" font="Regular;20" halign="left" foregroundColor="#55aaff" backgroundColor="black" />
+<widget name="iptun" position="485,372" size="245,26" font="Regular;20" halign="left" foregroundColor="#ffaa00" backgroundColor="black" />
+<widget name="readme_title" position="10,410" size="730,24" font="Regular;22" halign="center" foregroundColor="#d282ff" backgroundColor="black" />
+<widget name="readme" position="20,438" size="710,100" font="Regular;18" halign="left" valign="top" foregroundColor="#ffffff" backgroundColor="black" />
+</screen>'''
 
-    <widget name="key_red" position="70,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
-    <widget name="key_green" position="220,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3d9b4f" />
-    <widget name="key_yellow" position="370,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
-    <widget name="key_blue" position="520,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+    MENU_ITEMS = [
+        ("live.png", _("Listy kanałów"), "channels", _("13.0E & 19.2E & 23.5E & 28.2E")),
+        ("sat.png", _("Pobierz listę satelit"), "sat", _("Aktualizacja listy satelit")),
+        ("picon.png", _("Picony"), "picony", _("Pobieranie i instalacja piconów")),
+        ("archive.png", _("Twórz archiwum Pluginu"), "archive", _("RaczQQ Updater")),
+        ("archive.png", _("Twórz backup plików systemowych"), "conf_backup", _("Archiwizacja plików systemowych")),
+    ]
 
-    <widget name="update" position="10,302" size="730,30" font="Regular;21" halign="center" backgroundColor="black" />
-    <widget name="info" position="10,336" size="730,28" font="Regular;20" halign="center" backgroundColor="black" />
-
-    <widget name="cpu" position="10,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#ff5555" backgroundColor="black" />
-    <widget name="ram" position="135,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#55ff55" backgroundColor="black" />
-    <widget name="iplocal" position="260,372" size="220,26" font="Regular;20" halign="left" foregroundColor="#55aaff" backgroundColor="black" />
-    <widget name="iptun" position="485,372" size="245,26" font="Regular;20" halign="left" foregroundColor="#ffaa00" backgroundColor="black" />
-
-    <widget name="readme_title" position="10,410" size="730,24" font="Regular;22" halign="center" foregroundColor="#d282ff" backgroundColor="black" />
-    <widget name="readme" position="20,438" size="710,100" font="Regular;18" halign="left" valign="top" foregroundColor="#ffffff" backgroundColor="black" />
-
-    </screen>'''
-
-    def _read_local_version(self, default="unknown"):
-        """
-        Local version source of truth is PLUGIN_VERSION from plugin.py.
-        Fallback to plugin.version only for backward compatibility.
-        """
+    def __init__(self, session):
+        Screen.__init__(self, session)
+        self.session = session
+        self.list = []
+        self._prev_cpu = None
+        self._health_timer = eTimer()
+        self.update_available = False
+        self._sat_check_running = False
+        self._sat_open_progress_timer = eTimer()
         try:
-            v = ensure_unicode(globals().get("PLUGIN_VERSION", "")).strip()
-            if v:
-                return v
+            self._sat_open_progress_timer.timeout.connect(self._open_sat_progress_screen)
+        except Exception:
+            self._sat_open_progress_timer.callback.append(self._open_sat_progress_screen)
+
+        self["cpu"] = Label("")
+        self["ram"] = Label("")
+        self["iplocal"] = Label("")
+        self["iptun"] = Label("")
+        self["update"] = Label(_("Sprawdzanie wersji online..."))
+        self["list"] = List(self.list)
+        self["key_red"] = Label(_("Aktualizacja"))
+        self["key_red"].hide()
+        self["key_green"] = Label("-")
+        self["key_yellow"] = Label(_("Wyczyść TMP"))
+        self["key_blue"] = Label(_("Wyczyść RAM"))
+        self["info"] = Label(
+            "Updater by RaczQQ | Wersja: {} | Data: {} | Python: {}".format(
+                self._read_local_version("unknown"),
+                str(datetime.date.today()),
+                "Py3" if IS_PY3 else "Py2"
+            )
+        )
+        self["readme_title"] = Label("README / Informacje")
+        self["readme"] = Label("")
+
+        try:
+            self._health_timer.timeout.connect(self._update_health)
+        except Exception:
+            self._health_timer.callback.append(self._update_health)
+
+        self["actions"] = ActionMap(
+            ["WizardActions", "ColorActions"],
+            {
+                "red": self.keyRed,
+                "yellow": self.clear_tmp_cache,
+                "blue": self.clear_ram_memory,
+                "ok": self.KeyOk,
+                "back": self.close,
+            }
+        )
+
+        self.onShown.append(self._start_health_timer)
+        self.onClose.append(self._stop_health_timer)
+        self.onClose.append(self._cleanup_tmp_plugin_dir)
+
+        self.updateList()
+        self._refresh_readme()
+        self.check_updates()
+        self._update_health()
+
+    def _open_sat_progress_screen(self):
+        try:
+            self._sat_open_progress_timer.stop()
         except Exception:
             pass
+        self.session.open(SatellitesUpdateProgress, self)
 
+    def _read_local_version(self, default="unknown"):
         try:
-            p = os.path.join(PLUGIN_PATH, "plugin.version")
-            v = read_text_file(p, default="", encoding="utf-8").strip()
+            v = ensure_unicode(globals().get("PLUGIN_VERSION", "")).strip()
             return v if v else default
         except Exception:
             return default
-
-    VER = "unknown"
-    DATE = str(datetime.date.today())
 
     def _read_readme_text(self):
         readme_paths = [
@@ -293,7 +402,6 @@ class ChannelListUpdateMenu(Screen):
             os.path.join(PLUGIN_PATH, "README.md"),
             os.path.join(PLUGIN_PATH, "readme.md"),
         ]
-
         content = ""
         for path in readme_paths:
             if os.path.exists(path):
@@ -315,7 +423,7 @@ class ChannelListUpdateMenu(Screen):
             if line:
                 lines.append(line)
 
-        max_lines = 5
+        max_lines = 4
         text_out = "\n".join(lines[:max_lines])
         if len(lines) > max_lines:
             text_out += "\n..."
@@ -325,7 +433,7 @@ class ChannelListUpdateMenu(Screen):
         try:
             self["readme"].setText(self._read_readme_text())
         except Exception as e:
-            self["readme"].setText(_("Błąd odczytu README.MD: {}").format(e))
+            self["readme"].setText(_("Błąd odczytu README.MD: {}" ).format(e))
 
     def _cleanup_tmp_plugin_dir(self):
         try:
@@ -333,16 +441,95 @@ class ChannelListUpdateMenu(Screen):
         except Exception as e:
             print("[RaczQQ Updater] cleanup tmp error:", e)
 
+    def _start_health_timer(self):
+        try:
+            self._health_timer.start(2000, True)
+        except Exception:
+            pass
+
+    def _stop_health_timer(self):
+        try:
+            self._health_timer.stop()
+        except Exception:
+            pass
+
+    def _read_version_file(self, path, default="unknown"):
+        try:
+            v = read_text_file(path, default="", encoding="utf-8").strip()
+            return v if v else default
+        except Exception:
+            return default
+
+    def _normalize_version(self, version_string):
+        v = (version_string or "").strip()
+        if not v:
+            return [0]
+        parts = re.findall(r'\d+', v)
+        if parts:
+            try:
+                return [int(x) for x in parts]
+            except Exception:
+                pass
+        return [0]
+
+    def _is_online_version_newer(self, local_ver, online_ver):
+        return self._normalize_version(online_ver) > self._normalize_version(local_ver)
+
+    def check_updates(self):
+        prepare_tmp_dir()
+        self["key_red"].hide()
+        self["update"].setText(_("Sprawdzanie wersji online..."))
+
+        url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
+        tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
+
+        def after_download():
+            try:
+                local_version = self._read_local_version("unknown")
+                online_version = self._read_version_file(tmp_version_path, "unknown")
+                status = _("Brak aktualizacji.")
+                self.update_available = False
+                self["key_red"].hide()
+                self["update"].instance.setForegroundColor(parseColor("#ffffff"))
+
+                if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
+                    status = _("Aktualizacja jest dostępna.")
+                    self.update_available = True
+                    self["key_red"].show()
+                    self["update"].instance.setForegroundColor(parseColor("#ff3333"))
+
+                self["update"].setText(_("Wersja online: {} | {}").format(online_version, status))
+            except Exception as e:
+                print("[RaczQQ Updater] after_download error:", e)
+                self["key_red"].hide()
+                self["update"].setText(_("Wersja online: błąd odczytu | Brak informacji o aktualizacji"))
+
+        def run_check():
+            try:
+                if os.path.exists(tmp_version_path):
+                    os.remove(tmp_version_path)
+            except Exception:
+                pass
+
+            cmd = 'wget --prefer-family=IPv4 --no-check-certificate -U "Enigma2" -q -T 15 -O "{dst}" "{url}"'.format(dst=tmp_version_path, url=url)
+            rc = os.system(cmd)
+            size_ok = os.path.exists(tmp_version_path) and os.path.getsize(tmp_version_path) > 0
+            if rc == 0 and size_ok:
+                reactor.callFromThread(after_download)
+            else:
+                reactor.callFromThread(self.errorUpdate)
+
+        Thread(target=run_check).start()
+
+    def errorUpdate(self, failure=None):
+        self["key_red"].hide()
+        self["update"].instance.setForegroundColor(parseColor("#ffaa00"))
+        self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
+
     def keyRed(self):
         if not self.update_available:
-            self.session.open(
-                MessageBox,
-                _("Aktualizacja nie jest konieczna."),
-                MessageBox.TYPE_INFO,
-                timeout=3
-            )
+            self.session.open(MessageBox, _("Aktualizacja nie jest konieczna."), MessageBox.TYPE_INFO, timeout=3)
             return
-
         self.session.openWithCallback(
             self._confirm_download_and_install_update,
             MessageBox,
@@ -357,25 +544,26 @@ class ChannelListUpdateMenu(Screen):
     def download_and_install_update(self):
         url = "https://github.com/QraczQQ/RaczQQUpdater/archive/refs/heads/main.zip"
         zip_path = os.path.join(PLUGIN_TMP_PATH, "RaczQQUpdater-main.zip")
-        extract_path = os.path.join(PLUGIN_TMP_PATH, "RaczQQUpdater-main")
-
         prepare_tmp_dir()
-
         self["update"].setText(_("Pobieranie aktualizacji..."))
 
         def error(msg):
-            print("[RaczQQ Updater] update error:", msg)
-            self["update"].setText(_("Błąd aktualizacji: {}").format(msg))
-            self.session.open(
-                MessageBox,
-                _("Błąd aktualizacji:\n{}").format(msg),
-                MessageBox.TYPE_ERROR,
-                timeout=6
-            )
+            self["update"].setText(_("Błąd aktualizacji: {}" ).format(msg))
+            self.session.open(MessageBox, _("Błąd aktualizacji:\n{}" ).format(msg), MessageBox.TYPE_ERROR, timeout=6)
 
         def finish_ok():
-            self["update"].setText(_("Aktualizacja zakończona. Restart GUI..."))
-            self.session.open(TryQuitMainloop, 3)
+            try:
+                self.reload_settings_python()
+            except Exception:
+                traceback.print_exc()
+
+            self.session.open(
+                MessageBox,
+                _("Aktualizacja pluginu zakończona. Restart GUI..."),
+                MessageBox.TYPE_INFO,
+                timeout=3
+            )
+            reactor.callLater(3.2, lambda: self.session.open(TryQuitMainloop, 3))
 
         def worker():
             try:
@@ -385,17 +573,7 @@ class ChannelListUpdateMenu(Screen):
                 except Exception:
                     pass
 
-                try:
-                    if os.path.exists(extract_path):
-                        shutil.rmtree(extract_path, ignore_errors=True)
-                except Exception:
-                    pass
-
-                cmd = (
-                    'wget --prefer-family=IPv4 --no-check-certificate '
-                    '-U "Enigma2" -q -T 30 -O "{dst}" "{url}"'
-                ).format(dst=zip_path, url=url)
-
+                cmd = 'wget --prefer-family=IPv4 --no-check-certificate -U "Enigma2" -q -T 30 -O "{dst}" "{url}"'.format(dst=zip_path, url=url)
                 rc = os.system(cmd)
                 if rc != 0 or not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
                     reactor.callFromThread(error, "nie udało się pobrać archiwum ZIP")
@@ -418,7 +596,6 @@ class ChannelListUpdateMenu(Screen):
                     for name in os.listdir(src_root):
                         src = os.path.join(src_root, name)
                         dst = os.path.join(PLUGIN_PATH, name)
-
                         if os.path.isdir(src):
                             if os.path.exists(dst):
                                 shutil.rmtree(dst, ignore_errors=True)
@@ -430,112 +607,13 @@ class ChannelListUpdateMenu(Screen):
                     return
 
                 reactor.callFromThread(finish_ok)
-
             except Exception as e:
                 reactor.callFromThread(error, str(e))
 
         Thread(target=worker).start()
 
-####MENU####
-    MENU_ITEMS = [
-        ("live.png", _("Listy kanałów"), "channels", _("13.0E & 19.2E & 23.5E & 28.2E")),
-        ("sat.png", _("Pobierz listę satelit"), "sat", _("Aktualizacja listy satelit")),
-        ("picon.png", _("Picony"), "picony", _("Pobieranie i instalacja piconów")),
-        ("archive.png", _("Twórz backup plików systemowych"), "conf_backup", _("Archiwizacja plików systemowych")),
-        ("archive.png", _("Twórz archiwum Pluginu"), "archive", _("RaczQQ Updater")),
-    ]
-
-    def __init__(self, session):
-        Screen.__init__(self, session)
-        self.list = []
-        self._prev_cpu = None
-        self._health_timer = eTimer()
-        self.update_available = False
-        self["cpu"] = Label("")
-        self["ram"] = Label("")
-        self["iplocal"] = Label("")
-        self["iptun"] = Label("")
-        self["update"] = Label("Sprawdzanie wersji online...")
-
-        self["list"] = List(self.list)
-        self["key_red"] = Label("Aktualizacja")
-        self["key_red"].hide()
-        self["key_green"] = Label("-")
-        self["key_yellow"] = Label("Wyczyść TMP")
-        self["key_blue"] = Label("Wyczyść RAM")
-        self.VER = self._read_local_version("unknown")
-        self.DATE = str(datetime.date.today())
-        self["info"] = Label(
-            "Updater by RaczQQ | Wersja: {} | Data: {} | Python: {}".format(
-                self.VER, self.DATE, "Py3" if IS_PY3 else "Py2"
-            )
-        )
-        self["health"] = Label("")
-        self["readme_title"] = Label("README / Informacje")
-        self["readme"] = Label("")
-
-        try:
-            self._health_timer_conn = self._health_timer.timeout.connect(self._update_health)
-        except Exception:
-            self._health_timer.callback.append(self._update_health)
-
-        self["actions"] = ActionMap(
-            ["WizardActions", "ColorActions"],
-            {"red": self.keyRed, "yellow": self.clear_tmp_cache, "blue": self.clear_ram_memory, "ok": self.KeyOk, "back": self.close}
-        )
-
-        self.onShown.append(self._start_health_timer)
-        self.onClose.append(self._stop_health_timer)
-        self.onClose.append(self._cleanup_tmp_plugin_dir)
-
-        self.updateList()
-        self._refresh_readme()
-        self.check_updates(0)
-        self._update_health()
-
-    def _start_health_timer(self):
-        try:
-            self._health_timer.start(2000, True)
-        except Exception:
-            pass
-
-    def _stop_health_timer(self):
-        try:
-            self._health_timer.stop()
-        except Exception:
-            pass
-
-    def restart_gui(self): self.session.open(TryQuitMainloop, 3)
-
-    def reload_settings_python(self):
-        try:
-            eDVBDB.getInstance().removeServices()
-            eDVBDB.getInstance().reloadServicelist()
-            eDVBDB.getInstance().reloadBouquets()
-            if InfoBar.instance is not None:
-                servicelist = InfoBar.instance.servicelist
-                root = servicelist.getRoot()
-                currentref = servicelist.getCurrentSelection()
-                servicelist.setRoot(root)
-                servicelist.setCurrentSelection(currentref)
-        except:
-            traceback.print_exc()
-
-    def open_channels(self):
-        self.session.open(channels)
-
-    def open_picony(self):
-        self.session.open(PiconyScreen)
-
-    def open_conf_backup(self):
-        self.session.open(ConfBackupScreen)
-
     def _read_first_line(self, path, default="unknown"):
-        try:
-            value = read_first_line(path, default="", encoding="utf-8")
-            return value if value else default
-        except Exception:
-            return default
+        return read_first_line(path, default=default, encoding="utf-8")
 
     def _normalize_date_version(self, value):
         value = (value or "").strip()
@@ -545,9 +623,9 @@ class ChannelListUpdateMenu(Screen):
 
     def _extract_sat_version_from_xml(self, path):
         try:
-            cmd = 'grep File "{0}" | cut -d \' \' -f8 | cut -d \'T\' -f1'.format(path)
+            cmd = 'grep File "{0}" | cut -d \" \" -f8 | cut -d \"T\" -f1'.format(path)
             p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            out, err = p.communicate()
+            out, _ = p.communicate()
             if p.returncode != 0:
                 return "unknown"
             if not isinstance(out, str):
@@ -565,12 +643,12 @@ class ChannelListUpdateMenu(Screen):
         except Exception:
             return None
 
-    def _is_sat_online_newer(self, installed_ver, online_ver):
-        installed = self._sat_date_tuple(installed_ver)
-        online = self._sat_date_tuple(online_ver)
-        if installed is None or online is None:
+    def _is_sat_online_newer(self, xml_ver, online_ver):
+        xml_date = self._sat_date_tuple(xml_ver)
+        online_date = self._sat_date_tuple(online_ver)
+        if xml_date is None or online_date is None:
             return False
-        return online > installed
+        return online_date > xml_date
 
     def _fetch_online_sat_version(self):
         tmp_sat_path = os.path.join(PLUGIN_TMP_PATH, "satellites_online.xml")
@@ -595,33 +673,138 @@ class ChannelListUpdateMenu(Screen):
 
         return self._extract_sat_version_from_xml(tmp_sat_path)
 
-    def _run_sat_update(self):
-        script = os.path.join(PLUGIN_PATH, "update_satellites_xml.sh")
-        cmd = 'bash -c "sh {} ; sleep 3 ; exit"'.format(script)
-        run_command_in_background(
-            self.session,
-            "Aktualizacja listy satelitów",
-            [cmd],
-            callback_on_finish=self.reload_settings_python
-        )
+    def _run_sat_update_with_progress(self, progress_screen):
+        url = "http://raw.githubusercontent.com/OpenPLi/tuxbox-xml/master/xml/satellites.xml"
+        tmp_file = os.path.join(PLUGIN_TMP_PATH, "satellites.xml")
+        target = "/etc/tuxbox/satellites.xml"
+        version_file = "/etc/tuxbox/satellites.version"
+        enigma_override = "/etc/enigma2/satellites.xml"
+
+        prepare_tmp_dir()
+
+        def ui_progress(value, text):
+            reactor.callFromThread(progress_screen.setProgress, value, text)
+
+        def ui_error(msg):
+            self["update"].setText(_("Błąd aktualizacji satellites.xml"))
+            reactor.callFromThread(progress_screen.finishError, msg)
+
+        def ui_success(ver):
+            self["update"].setText(_("satellites.xml zaktualizowany: %s") % ver)
+            reactor.callFromThread(progress_screen.finishSuccess, ver)
+
+        def worker():
+            try:
+                ui_progress(5, _("Przygotowanie..."))
+
+                try:
+                    if os.path.exists(tmp_file):
+                        os.remove(tmp_file)
+                except Exception:
+                    pass
+
+                ui_progress(15, _("Pobieranie pliku..."))
+
+                cmd = (
+                    'wget --prefer-family=IPv4 --no-check-certificate '
+                    '-U "Enigma2" -q -T 20 -O "{dst}" "{url}"'
+                ).format(dst=tmp_file, url=url)
+
+                rc = os.system(cmd)
+                if rc != 0:
+                    ui_error("nie udało się pobrać satellites.xml")
+                    return
+
+                ui_progress(55, _("Sprawdzanie pliku..."))
+
+                if not os.path.exists(tmp_file) or os.path.getsize(tmp_file) == 0:
+                    ui_error("pobrany plik jest pusty")
+                    return
+
+                xml_version = self._extract_sat_version_from_xml(tmp_file)
+                if xml_version == "unknown":
+                    ui_error("nie udało się odczytać daty z pobranego satellites.xml")
+                    return
+
+                ui_progress(70, _("Zapisywanie satellites.xml..."))
+
+                try:
+                    shutil.move(tmp_file, target)
+                except Exception as e:
+                    ui_error("nie udało się zapisać pliku docelowego: %s" % e)
+                    return
+
+                ui_progress(82, _("Zapisywanie wersji..."))
+
+                try:
+                    with io.open(version_file, "w", encoding="utf-8") as f:
+                        f.write(ensure_unicode(xml_version) + "\n")
+                except Exception as e:
+                    ui_error("nie udało się zapisać satellites.version: %s" % e)
+                    return
+
+                ui_progress(90, _("Usuwanie lokalnego override..."))
+
+                try:
+                    if os.path.exists(enigma_override):
+                        os.remove(enigma_override)
+                except Exception as e:
+                    ui_error("nie udało się usunąć /etc/enigma2/satellites.xml: %s" % e)
+                    return
+
+                ui_progress(96, _("Przeładowywanie list..."))
+
+                try:
+                    os.sync()
+                except Exception:
+                    pass
+
+                try:
+                    reactor.callFromThread(self.reload_settings_python)
+                except Exception:
+                    pass
+
+                ui_progress(100, _("Gotowe"))
+                ui_success(xml_version)
+
+            except Exception as e:
+                ui_error(str(e))
+
+        Thread(target=worker).start()
 
     def _show_sat_update_summary(self, online_version):
-        installed_version = self._normalize_date_version(
-            self._read_first_line("/etc/tuxbox/satellites.version", "unknown")
-        )
         xml_version = self._extract_sat_version_from_xml("/etc/tuxbox/satellites.xml")
 
         online_display = online_version if online_version and online_version != "unknown" else "nieznana"
-        installed_display = installed_version if installed_version != "unknown" else "nieznana"
         xml_display = xml_version if xml_version != "unknown" else "nieznana"
 
         msg = (
             "Wersja dostępna online: {}\n"
-            "Wersja zainstalowana: {}\n"
             "Wersja z satellites.xml: {}"
-        ).format(online_display, installed_display, xml_display)
+        ).format(online_display, xml_display)
 
-        if self._is_sat_online_newer(installed_version, online_version):
+        if not online_version or online_version == "unknown":
+            self["update"].setText(_("Nie udało się pobrać wersji online satellites.xml"))
+            self.session.open(
+                MessageBox,
+                msg + "\n\nNie udało się pobrać wersji online.",
+                MessageBox.TYPE_ERROR,
+                timeout=3
+            )
+            return
+
+        if xml_version == "unknown":
+            self["update"].setText(_("Brak daty w satellites.xml — dostępna aktualizacja"))
+            self.session.openWithCallback(
+                self._confirm_sat_update,
+                MessageBox,
+                msg + "\n\nNie wykryto daty w satellites.xml. Czy chcesz pobrać i zainstalować aktualizację?",
+                MessageBox.TYPE_YESNO
+            )
+            return
+
+        if self._is_sat_online_newer(xml_version, online_version):
+            self["update"].setText(_("Dostępna jest nowsza wersja satellites.xml"))
             self.session.openWithCallback(
                 self._confirm_sat_update,
                 MessageBox,
@@ -629,158 +812,102 @@ class ChannelListUpdateMenu(Screen):
                 MessageBox.TYPE_YESNO
             )
         else:
+            self["update"].setText(_("satellites.xml jest aktualny"))
             self.session.open(
                 MessageBox,
                 msg + "\n\nAktualizacja nie jest wymagana",
                 MessageBox.TYPE_INFO,
-                timeout=10
+                timeout=3
             )
 
     def _confirm_sat_update(self, answer):
         if answer:
-            self._run_sat_update()
+            self["update"].setText(_("Rozpoczynam aktualizację satellites.xml..."))
+            try:
+                self._sat_open_progress_timer.start(200, True)
+            except Exception:
+                self._open_sat_progress_screen()
+        else:
+            self["update"].setText(_("Aktualizacja satellites.xml anulowana"))
 
     def update_sat(self):
-        self.session.open(
-            MessageBox,
-            "Sprawdzanie wersji satellites.xml...",
-            MessageBox.TYPE_INFO,
-            timeout=2
-        )
+        if self._sat_check_running:
+            return
+
+        self._sat_check_running = True
+        self["update"].setText(_("Sprawdzanie wersji satellites.xml..."))
 
         def worker():
-            online_version = self._fetch_online_sat_version()
-            reactor.callFromThread(self._show_sat_update_summary, online_version)
+            try:
+                online_version = self._fetch_online_sat_version()
+                reactor.callFromThread(self._after_sat_online_check, online_version)
+            except Exception as e:
+                reactor.callFromThread(self._after_sat_online_check_error, str(e))
 
         Thread(target=worker).start()
 
+    def _after_sat_online_check(self, online_version):
+        self._sat_check_running = False
+        self["update"].setText(_("Sprawdzono wersję satellites.xml"))
+        self._show_sat_update_summary(online_version)
+
+    def _after_sat_online_check_error(self, err):
+        self._sat_check_running = False
+        self["update"].setText(_("Błąd sprawdzania satellites.xml"))
+        self.session.open(
+            MessageBox,
+            _("Błąd sprawdzania satellites.xml:\n%s") % err,
+            MessageBox.TYPE_ERROR,
+            timeout=5
+        )
+
+    def reload_settings_python(self):
+        try:
+            eDVBDB.getInstance().removeServices()
+            eDVBDB.getInstance().reloadServicelist()
+            eDVBDB.getInstance().reloadBouquets()
+            if InfoBar.instance is not None:
+                servicelist = InfoBar.instance.servicelist
+                root = servicelist.getRoot()
+                currentref = servicelist.getCurrentSelection()
+                servicelist.setRoot(root)
+                servicelist.setCurrentSelection(currentref)
+        except Exception:
+            traceback.print_exc()
+
+    def open_channels(self):
+        self.session.open(channels)
+
+    def open_picony(self):
+        self.session.open(PiconyScreen)
+
     def open_archive(self):
         self.session.open(ArchiveScreen)
+
+    def open_conf_backup(self):
+        self.session.open(ConfBackupScreen)
 
     def KeyOk(self):
         sel = self["list"].getCurrent()
         if not sel:
             return
-
         actions = {
             "channels": self.open_channels,
             "sat": self.update_sat,
             "picony": self.open_picony,
-            "conf_backup": self.open_conf_backup,
             "archive": self.open_archive,
+            "conf_backup": self.open_conf_backup,
         }
-
         action = actions.get(sel[2])
         if action:
             action()
 
     def updateList(self):
-        images_path = os.path.join(
-            resolveFilename(SCOPE_PLUGINS),
-            "Extensions/RaczQQUpdater/images"
-        )
-
+        images_path = os.path.join(resolveFilename(SCOPE_PLUGINS), "Extensions/RaczQQUpdater/images")
         self["list"].setList([
             (name, LoadPixmap(os.path.join(images_path, icon)), idx, desc)
             for icon, name, idx, desc in self.MENU_ITEMS
         ])
-
-    def quit(self):
-        self.close()
-
-    def _read_version_file(self, path, default="unknown"):
-        try:
-            v = read_text_file(path, default="", encoding="utf-8").strip()
-            return v if v else default
-        except Exception:
-            return default
-
-    def _normalize_version(self, version_string):
-        v = (version_string or "").strip()
-        if not v:
-            return [0]
-
-        parts = re.findall(r'\d+', v)
-        if parts:
-            try:
-                return [int(x) for x in parts]
-            except Exception:
-                pass
-
-        return [0]
-
-    def _is_online_version_newer(self, local_ver, online_ver):
-        return self._normalize_version(online_ver) > self._normalize_version(local_ver)
-
-    def errorUpdate(self, failure=None):
-        self["key_red"].hide()
-        self["update"].instance.setForegroundColor(parseColor("#ffaa00"))
-        self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
-
-    def check_updates(self, tryb=0):
-        prepare_tmp_dir()
-
-        self["key_red"].hide()
-        self["update"].setText(_("Sprawdzanie wersji online..."))
-
-        url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
-        tmp_version_path = os.path.join(PLUGIN_TMP_PATH, "plugin.version")
-
-        def after_download():
-            try:
-                local_version = self._read_local_version("unknown")
-                online_version = self._read_version_file(tmp_version_path, "unknown")
-
-                print("[RaczQQ Updater] local_version =", local_version)
-                print("[RaczQQ Updater] online_version =", online_version)
-                print("[RaczQQ Updater] tmp_version_path =", tmp_version_path)
-
-                status = _("Brak aktualizacji.")
-                self.update_available = False
-                self["key_red"].hide()
-                self["update"].instance.setForegroundColor(parseColor("#ffffff"))
-
-                if online_version != "unknown" and self._is_online_version_newer(local_version, online_version):
-                    status = _("Aktualizacja jest dostępna.")
-                    self.update_available = True
-                    self["key_red"].show()
-                    self["update"].instance.setForegroundColor(parseColor("#ff3333"))
-
-                self["update"].setText(
-                    _("Wersja online: {} | {}").format(online_version, status)
-                )
-
-            except Exception as e:
-                print("[RaczQQ Updater] after_download error:", e)
-                self["key_red"].hide()
-                self["update"].setText(_("Wersja online: błąd odczytu | Brak informacji o aktualizacji"))
-
-        def run_check():
-            try:
-                if os.path.exists(tmp_version_path):
-                    os.remove(tmp_version_path)
-            except Exception as e:
-                print("[RaczQQ Updater] remove old tmp version error:", e)
-
-            cmd = (
-                'wget --prefer-family=IPv4 --no-check-certificate '
-                '-U "Enigma2" -q -T 15 -O "{dst}" "{url}"'
-            ).format(dst=tmp_version_path, url=url)
-
-            rc = os.system(cmd)
-            exists = os.path.exists(tmp_version_path)
-            size_ok = exists and os.path.getsize(tmp_version_path) > 0
-
-            print("[RaczQQ Updater] wget rc =", rc)
-            print("[RaczQQ Updater] tmp exists =", exists)
-            print("[RaczQQ Updater] tmp size_ok =", size_ok)
-
-            if rc == 0 and size_ok:
-                reactor.callFromThread(after_download)
-            else:
-                reactor.callFromThread(self.errorUpdate, None)
-
-        Thread(target=run_check).start()
 
     def clear_ram_memory(self):
         os.system("sync; echo 3 > /proc/sys/vm/drop_caches")
@@ -791,7 +918,7 @@ class ChannelListUpdateMenu(Screen):
             os.system("rm -rf /tmp/*.ipk /tmp/*.zip /tmp/*.tar.gz /tmp/*.tgz /tmp/RaczQQUpdater/*")
             self.session.open(MessageBox, _("Wyczyszczono pamięć podręczną /tmp."), MessageBox.TYPE_INFO, timeout=3)
         except Exception as e:
-            self.session.open(MessageBox, _("Błąd: {}".format(e)), MessageBox.TYPE_INFO, timeout=3)
+            self.session.open(MessageBox, _("Błąd: {}" ).format(e), MessageBox.TYPE_INFO, timeout=3)
 
     def _read_cpu_percent(self):
         try:
@@ -827,93 +954,48 @@ class ChannelListUpdateMenu(Screen):
             total = mem.get("MemTotal", 0)
             avail = mem.get("MemAvailable", mem.get("MemFree", 0))
             used = max(0, total - avail)
-            pct = (used * 100.0 / float(total)) if total else 0.0
-            return pct
-        except Exception:
-            return None
-
-    def _local_ip(self):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(1.0)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
+            return (used * 100.0 / float(total)) if total else 0.0
         except Exception:
             return None
 
     def _get_ips_from_system(self):
         local_ip = None
         tunneled_ip = None
-
         try:
             out = subprocess.check_output(["ip", "-4", "-o", "addr", "show"])
             if not isinstance(out, str):
                 out = out.decode("utf-8", "ignore")
-
             for line in out.splitlines():
-                # przykład:
-                # 2: eth0    inet 192.168.1.10/24 brd ...
-                # 5: tun0    inet 10.8.0.2/24 scope global ...
                 m = re.search(r'^\d+:\s+([^\s]+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/', line)
                 if not m:
                     continue
-
                 iface = m.group(1)
                 ip = m.group(2)
-
-                # tunneled IP
                 if iface.startswith(("tun", "tap", "ppp", "wg")):
                     if tunneled_ip is None:
                         tunneled_ip = ip
                     continue
-
-                # local IP
-                if iface.startswith(("eth", "wlan", "ra", "en")):
-                    if not ip.startswith("127."):
-                        if local_ip is None:
-                            local_ip = ip
-
+                if iface.startswith(("eth", "wlan", "ra", "en")) and not ip.startswith("127."):
+                    if local_ip is None:
+                        local_ip = ip
             return local_ip, tunneled_ip
-
         except Exception:
             return None, None
-
-    def _local_ip(self):
-        local_ip, tunneled_ip = self._get_ips_from_system()
-        return local_ip
-
-    def _tunneled_ip(self):
-        local_ip, tunneled_ip = self._get_ips_from_system()
-        return tunneled_ip
 
     def _update_health(self):
         try:
             cpu = self._read_cpu_percent()
             mem = self._read_mem_pct()
             local_ip, tunneled_ip = self._get_ips_from_system()
-
-            cpu_s = "N/A" if cpu is None else "%d%%" % int(cpu)
-            mem_s = "N/A" if mem is None else "%d%%" % int(mem)
-            local_s = local_ip or "N/A"
-            tun_s = tunneled_ip or "N/A"
-
-            self["cpu"].setText("CPU: %s" % cpu_s)
-            self["ram"].setText("RAM: %s" % mem_s)
-            self["iplocal"].setText("IP: %s" % local_s)
-            self["iptun"].setText("IP VPN: %s" % tun_s)
+            self["cpu"].setText("CPU: %s" % ("N/A" if cpu is None else "%d%%" % int(cpu)))
+            self["ram"].setText("RAM: %s" % ("N/A" if mem is None else "%d%%" % int(mem)))
+            self["iplocal"].setText("IP: %s" % (local_ip or "N/A"))
+            self["iptun"].setText("IP VPN: %s" % (tunneled_ip or "N/A"))
         except Exception:
             pass
         self._start_health_timer()
 
-    def update(self, answer):
-        if answer is True:
-            self.session.open(ChannelListUpdateUpdater, self.updateurl)
-        else:
-            return
 
-####Listy kanałów z pliku manifest####
 class ManifestChannelsScreen(Screen):
     skin = '''
     <screen name="ManifestChannelsScreen" position="center,center" size="900,560" title="Dostępne listy kanałów">
@@ -927,22 +1009,13 @@ class ManifestChannelsScreen(Screen):
         Screen.__init__(self, session)
         self.session = session
         self.lists_menu = lists_menu or []
-
         self["list"] = List([])
         self["status"] = Label("OK - wybierz | EXIT - powrót")
-
         self["actions"] = ActionMap(
             ["OkCancelActions", "WizardActions", "DirectionActions"],
-            {
-                "ok": self.keyOk,
-                "back": self.close,
-                "cancel": self.close,
-                "up": self.keyUp,
-                "down": self.keyDown
-            },
+            {"ok": self.keyOk, "back": self.close, "cancel": self.close, "up": self.keyUp, "down": self.keyDown},
             -1
         )
-
         self.buildList()
 
     def buildList(self):
@@ -955,13 +1028,8 @@ class ManifestChannelsScreen(Screen):
             except Exception:
                 title_ui = str(title)
             entries.append((title_ui, action))
-
         self["list"].setList(entries)
-
-        if entries:
-            self["status"].setText("Załadowano %d pozycji" % len(entries))
-        else:
-            self["status"].setText("Brak pozycji do wyświetlenia")
+        self["status"].setText("Załadowano %d pozycji" % len(entries) if entries else "Brak pozycji do wyświetlenia")
 
     def keyUp(self):
         try:
@@ -986,51 +1054,37 @@ class ManifestChannelsScreen(Screen):
                 currentref = servicelist.getCurrentSelection()
                 servicelist.setRoot(root)
                 servicelist.setCurrentSelection(currentref)
-        except:
+        except Exception:
             traceback.print_exc()
 
     def keyOk(self):
         sel = self["list"].getCurrent()
         if not sel:
             return
-
-        title = sel[0]
-        action = sel[1]
-
+        title, action = sel[0], sel[1]
         if action.startswith("archive:"):
-            url = action.split(":", 1)[1]
-            self.install_archive(title, url)
-
+            self.install_archive(title, action.split(":", 1)[1])
         elif action.startswith("m3u:"):
             parts = action.split(":", 3)
             if len(parts) >= 4:
                 url = parts[1] + ":" + parts[2]
-                rest = parts[3]
-                rest_parts = rest.split(":", 1)
+                rest_parts = parts[3].split(":", 1)
                 bouquet_id = rest_parts[0]
                 bouquet_name = rest_parts[1] if len(rest_parts) > 1 else bouquet_id
                 self.install_m3u_as_bouquet(title, url, bouquet_id, bouquet_name)
-
         elif action.startswith("bouquet:"):
             parts = action.split(":", 3)
             if len(parts) >= 4:
                 url = parts[1] + ":" + parts[2]
-                rest = parts[3]
-                rest_parts = rest.split(":", 1)
+                rest_parts = parts[3].split(":", 1)
                 bouquet_id = rest_parts[0]
                 bouquet_name = rest_parts[1] if len(rest_parts) > 1 else bouquet_id
                 self.install_bouquet_reference(title, url, bouquet_id, bouquet_name)
 
     def install_archive(self, title, url):
         prepare_tmp_dir()
-
         if not url.endswith((".zip", ".tar.gz", ".tgz", ".ipk")):
-            self.session.open(
-                MessageBox,
-                _("Nieobsługiwany format archiwum!"),
-                MessageBox.TYPE_ERROR,
-                timeout=5
-            )
+            self.session.open(MessageBox, _("Nieobsługiwany format archiwum!"), MessageBox.TYPE_ERROR, timeout=5)
             return
 
         archive_type = "zip" if url.endswith(".zip") else ("tar.gz" if url.endswith((".tar.gz", ".tgz")) else "ipk")
@@ -1038,33 +1092,11 @@ class ManifestChannelsScreen(Screen):
         extract_dir = os.path.join(PLUGIN_TMP_PATH, "extracted")
 
         if archive_type == "ipk":
-            cmd = (
-                '[ -f "{archive}" ] && rm -f "{archive}"; '
-                'wget -T 30 --no-check-certificate -O "{archive}" "{url}" && '
-                'opkg install --force-reinstall "{archive}" && '
-                '[ -f "{archive}" ] && rm -f "{archive}"; '
-                'sync'
-            ).format(
-                archive=tmp_archive_path,
-                url=url
-            )
-            run_command_in_background(
-                self.session,
-                title,
-                [cmd],
-                callback_on_finish=self.reload_settings_python
-            )
+            cmd = '[ -f "{archive}" ] && rm -f "{archive}"; wget -T 30 --no-check-certificate -O "{archive}" "{url}" && opkg install --force-reinstall "{archive}" && [ -f "{archive}" ] && rm -f "{archive}"; sync'.format(archive=tmp_archive_path, url=url)
+            run_command_in_background(self.session, title, [cmd], callback_on_finish=self.reload_settings_python)
             return
 
-        extract_cmd = (
-            'unzip -o -q "{archive}" -d "{extract}"'
-            if archive_type == "zip"
-            else 'tar -xzf "{archive}" -C "{extract}"'
-        ).format(
-            archive=tmp_archive_path,
-            extract=extract_dir
-        )
-
+        extract_cmd = ('unzip -o -q "{archive}" -d "{extract}"' if archive_type == "zip" else 'tar -xzf "{archive}" -C "{extract}"').format(archive=tmp_archive_path, extract=extract_dir)
         cmd = (
             '[ -f "{archive}" ] && rm -f "{archive}"; '
             '[ -d "{extract}" ] && rm -rf "{extract}"; '
@@ -1077,43 +1109,26 @@ class ManifestChannelsScreen(Screen):
             'rm -f /etc/enigma2/lamedb* /etc/enigma2/bouquets.* /etc/enigma2/whitelist*; '
             'find /etc/enigma2 -maxdepth 1 -type f -name "userbouquet.*.tv" ! -name "userbouquet.jedi*.tv" -exec rm -f {{}} \\; ; '
             'find /etc/enigma2 -maxdepth 1 -type f -name "userbouquet.*.radio" -exec rm -f {{}} \\; ; '
-            'find "$LAMEDB_DIR" -maxdepth 1 -type f \\( '
-            '-name "lamedb*" -o '
-            '-name "bouquets.*" -o '
-            '-name "userbouquet.*" -o '
-            '-name "whitelist*" '
-            '\\) -exec cp -f {{}} /etc/enigma2/ \\; ; '
+            'find "$LAMEDB_DIR" -maxdepth 1 -type f \\( -name "lamedb*" -o -name "bouquets.*" -o -name "userbouquet.*" -o -name "whitelist*" \\) -exec cp -f {{}} /etc/enigma2/ \\; ; '
             '[ -f /etc/enigma2/bouquets.tv ] || touch /etc/enigma2/bouquets.tv; '
             'for f in /etc/enigma2/userbouquet.jedi*.tv; do '
             '[ -f "$f" ] || continue; '
             'bn=$(basename "$f"); '
             'line=$(printf \'#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET "%s" ORDER BY bouquet\' "$bn"); '
             'grep -Fqx "$line" /etc/enigma2/bouquets.tv || echo "$line" >> /etc/enigma2/bouquets.tv; '
-            'done; '
-            'fi; '
+            'done; fi; '
             '[ -f "{archive}" ] && rm -f "{archive}"; '
-            '[ -d "{extract}" ] && rm -rf "{extract}"; '
-            'sync'
-        ).format(
-            archive=tmp_archive_path,
-            extract=extract_dir,
-            url=url,
-            extract_cmd=extract_cmd
-        )
+            '[ -d "{extract}" ] && rm -rf "{extract}"; sync'
+        ).format(archive=tmp_archive_path, extract=extract_dir, url=url, extract_cmd=extract_cmd)
 
-        run_command_in_background(
-            self.session,
-            title,
-            [cmd],
-            callback_on_finish=self.reload_settings_python
-        )
+        run_command_in_background(self.session, title, [cmd], callback_on_finish=self.reload_settings_python)
 
     def install_m3u_as_bouquet(self, title, url, bouquet_id, bouquet_name):
         tmp = os.path.join(PLUGIN_TMP_PATH, "temp.m3u")
         run_command_in_background(
             self.session,
             title,
-            ["wget -T 30 --no-check-certificate -O \"{}\" \"{}\"".format(tmp, url)],
+            ['wget -T 30 --no-check-certificate -O "{}" "{}"'.format(tmp, url)],
             callback_on_finish=lambda: Thread(target=self._parse_m3u_thread, args=(tmp, bouquet_id, bouquet_name)).start()
         )
 
@@ -1121,7 +1136,6 @@ class ManifestChannelsScreen(Screen):
         try:
             if not os.path.exists(tmp_path):
                 return
-
             e2 = ["#NAME {}\n".format(bname)]
             with io.open(tmp_path, 'r', encoding='utf-8', errors='ignore') as f:
                 name = "N/A"
@@ -1132,7 +1146,6 @@ class ManifestChannelsScreen(Screen):
                     elif l.startswith('http'):
                         e2.append("#SERVICE 4097:0:1:0:0:0:0:0:0:0:{}:{}\n".format(l.replace(':', '%3a'), name))
                         name = "N/A"
-
             if len(e2) > 1:
                 t_bq = os.path.join(PLUGIN_TMP_PATH, bid)
                 with io.open(t_bq, 'w', encoding='utf-8') as f:
@@ -1153,18 +1166,9 @@ class ManifestChannelsScreen(Screen):
             traceback.print_exc()
 
     def install_bouquet_reference(self, title, url, bid, bname):
-        cmd = (
-            "wget -qO \"/etc/enigma2/{b}\" \"{u}\" && "
-            "(grep -q \"{b}\" /etc/enigma2/bouquets.tv || "
-            "echo '#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET \"{b}\" ORDER BY bouquet' >> /etc/enigma2/bouquets.tv)"
-        ).format(b=bid, u=url)
+        cmd = 'wget -qO "/etc/enigma2/{b}" "{u}" && (grep -q "{b}" /etc/enigma2/bouquets.tv || echo \'#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET "{b}" ORDER BY bouquet\' >> /etc/enigma2/bouquets.tv)'.format(b=bid, u=url)
+        run_command_in_background(self.session, title, [cmd], callback_on_finish=self.reload_settings_python)
 
-        run_command_in_background(
-            self.session,
-            title,
-            [cmd],
-            callback_on_finish=self.reload_settings_python
-        )
 
 class channels(Screen):
     skin = '''
@@ -1176,16 +1180,7 @@ class channels(Screen):
         Screen.__init__(self, session)
         self.session = session
         self["status"] = Label("Pobieranie manifest.json...\nProszę czekać...")
-
-        self["actions"] = ActionMap(
-            ["OkCancelActions", "WizardActions"],
-            {
-                "back": self.close,
-                "cancel": self.close
-            },
-            -1
-        )
-
+        self["actions"] = ActionMap(["OkCancelActions", "WizardActions"], {"back": self.close, "cancel": self.close}, -1)
         self.onShown.append(self.startLoad)
 
     def startLoad(self):
@@ -1204,35 +1199,16 @@ class channels(Screen):
             self.session.open(MessageBox, _("Nie udało się pobrać list z manifest.json"), MessageBox.TYPE_ERROR, timeout=5)
             self.close()
             return
-
         self.session.open(ManifestChannelsScreen, lists_menu)
         self.close()
 
     def _show_error(self, err):
-        self.session.open(MessageBox, _("Błąd pobierania manifest.json:\n{}").format(err), MessageBox.TYPE_ERROR, timeout=6)
+        self.session.open(MessageBox, _("Błąd pobierania manifest.json:\n{}" ).format(err), MessageBox.TYPE_ERROR, timeout=6)
         self.close()
 
 
 def main(session, **kwargs):
     session.open(ChannelListUpdateMenu)
-
-
-# --- FUNKCJA URUCHAMIANIA W TLE (Dla zadań wewnętrznych) ---
-def run_command_in_background(session, title, cmd_list, callback_on_finish=None):
-    def _finished(*args):
-        if callback_on_finish:
-            try:
-                callback_on_finish()
-            except Exception:
-                traceback.print_exc()
-
-    session.openWithCallback(
-        _finished,
-        Console,
-        title=title,
-        cmdlist=cmd_list,
-        closeOnSuccess=True
-    )
 
 
 class ArchiveScreen(Screen):
@@ -1242,9 +1218,7 @@ class ArchiveScreen(Screen):
         <widget source="key_green" render="Label" position="240,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="green" transparent="1" />
         <widget source="key_yellow" render="Label" position="460,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="yellow" transparent="1" />
         <widget source="key_blue" render="Label" position="680,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="blue" transparent="1" />
-
         <widget source="info" render="Label" position="20,60" size="860,30" font="Regular;22" />
-
         <widget source="list" render="Listbox" position="20,100" size="860,380" scrollbarMode="showOnDemand">
             <convert type="TemplatedMultiContent">
                 {
@@ -1265,28 +1239,17 @@ class ArchiveScreen(Screen):
     def __init__(self, session):
         Screen.__init__(self, session)
         self.session = session
-
         self["key_red"] = StaticText(_("Create archive"))
         self["key_green"] = StaticText(_("Restore backup"))
         self["key_yellow"] = StaticText(_("Odśwież"))
         self["key_blue"] = StaticText(_("Zamknij"))
         self["info"] = StaticText(_("Wybierz backup z listy"))
-
         self["list"] = List([])
-
         self["actions"] = ActionMap(
             ["ColorActions", "OkCancelActions"],
-            {
-                "red": self.create_archive,
-                "yellow": self.updateList,
-                "green": self.restore_selected_backup,
-                "blue": self.close,
-                "cancel": self.close,
-                "ok": self.restore_selected_backup,
-            },
+            {"red": self.create_archive, "yellow": self.updateList, "green": self.restore_selected_backup, "blue": self.close, "cancel": self.close, "ok": self.restore_selected_backup},
             -1
         )
-
         self.updateList()
 
     def restart_gui(self):
@@ -1297,7 +1260,6 @@ class ArchiveScreen(Screen):
         if m:
             raw = m.group(1)
             return "%s-%s-%s" % (raw[0:4], raw[4:6], raw[6:8])
-
         try:
             ts = os.path.getmtime(fullpath)
             return time.strftime("%Y-%m-%d", time.localtime(ts))
@@ -1307,15 +1269,11 @@ class ArchiveScreen(Screen):
     def _get_backup_version(self, fullpath):
         try:
             tar = tarfile.open(fullpath, "r:gz")
-            members = tar.getmembers()
-
             version_member = None
-            for member in members:
-                base = os.path.basename(member.name)
-                if base == "plugin.version":
+            for member in tar.getmembers():
+                if os.path.basename(member.name) == "plugin.version":
                     version_member = member
                     break
-
             if version_member is not None:
                 f = tar.extractfile(version_member)
                 if f is not None:
@@ -1323,16 +1281,13 @@ class ArchiveScreen(Screen):
                     tar.close()
                     if version:
                         return version
-
             tar.close()
         except Exception as e:
             print("[RaczQQ Updater] Blad odczytu wersji z backupu %s: %s" % (fullpath, e))
-
         return "brak wersji"
 
     def updateList(self):
         items = []
-
         if not os.path.isdir(self.BACKUP_DIR):
             try:
                 os.makedirs(self.BACKUP_DIR)
@@ -1350,56 +1305,31 @@ class ArchiveScreen(Screen):
             fullpath = os.path.join(self.BACKUP_DIR, filename)
             date_str = self._get_backup_date(fullpath, filename)
             version_str = self._get_backup_version(fullpath)
-
             title = "%s  | %s" % (filename, version_str)
             desc = "Data backupu: %s" % date_str
             items.append((title, desc, fullpath, version_str, date_str))
 
         if not items:
-            items.append((
-                _("Brak backupów"),
-                _("Naciśnij czerwony przycisk aby utworzyć archiwum"),
-                "",
-                "",
-                ""
-            ))
+            items.append((_("Brak backupów"), _("Naciśnij czerwony przycisk aby utworzyć archiwum"), "", "", ""))
 
         self["list"].setList(items)
-
         latest = None
         for item in items:
             if item[2]:
                 latest = item
                 break
-
         if latest:
-            self["info"].setText(
-                _("Ostatni backup: %s | wersja: %s") % (latest[4], latest[3])
-            )
+            self["info"].setText(_("Ostatni backup: %s | wersja: %s") % (latest[4], latest[3]))
         else:
             self["info"].setText(_("Brak archiwów w katalogu backup"))
 
     def create_archive(self):
         script_path = os.path.join(PLUGIN_PATH, "archive.sh")
-
         if not os.path.exists(script_path):
-            self.session.open(
-                MessageBox,
-                _("Nie znaleziono pliku archive.sh"),
-                MessageBox.TYPE_ERROR,
-                timeout=5
-            )
+            self.session.open(MessageBox, _("Nie znaleziono pliku archive.sh"), MessageBox.TYPE_ERROR, timeout=5)
             return
-
-        title = _("Tworzenie archiwum")
         cmd = 'chmod +x "{0}" && "{0}"'.format(script_path)
-
-        run_command_in_background(
-            self.session,
-            title,
-            [cmd],
-            callback_on_finish=self._after_create_archive
-        )
+        run_command_in_background(self.session, _("Tworzenie archiwum"), [cmd], callback_on_finish=self._after_create_archive)
 
     def _after_create_archive(self):
         self.updateList()
@@ -1407,33 +1337,18 @@ class ArchiveScreen(Screen):
     def restore_selected_backup(self):
         sel = self["list"].getCurrent()
         if not sel or not sel[2]:
-            self.session.open(
-                MessageBox,
-                _("Brak wybranego backupu"),
-                MessageBox.TYPE_INFO,
-                timeout=4
-            )
+            self.session.open(MessageBox, _("Brak wybranego backupu"), MessageBox.TYPE_INFO, timeout=4)
             return
-
         backup_path = sel[2]
-        msg = _("Przywrócić backup?\n\n%s") % os.path.basename(backup_path)
-        self.session.openWithCallback(
-            self._confirm_restore_callback,
-            MessageBox,
-            msg,
-            MessageBox.TYPE_YESNO
-        )
+        self.session.openWithCallback(self._confirm_restore_callback, MessageBox, _("Przywrócić backup?\n\n%s") % os.path.basename(backup_path), MessageBox.TYPE_YESNO)
 
     def _confirm_restore_callback(self, answer):
         if not answer:
             return
-
         sel = self["list"].getCurrent()
         if not sel or not sel[2]:
             return
-
         backup_path = sel[2]
-
         cmd = (
             'for item in "{plugin_path}"/*; do '
             '    [ ! -e "$item" ] && continue; '
@@ -1444,17 +1359,9 @@ class ArchiveScreen(Screen):
             'find "{plugin_path}" -type d ! -path "{plugin_path}/backup" ! -path "{plugin_path}/backup/*" -exec chmod 755 {{}} \\; && '
             'find "{plugin_path}" -type f ! -path "{plugin_path}/backup/*" -exec chmod 644 {{}} \\; && '
             'sync'
-        ).format(
-            plugin_path=PLUGIN_PATH,
-            archive=backup_path
-        )
+        ).format(plugin_path=PLUGIN_PATH, archive=backup_path)
+        run_command_in_background(self.session, _("Przywracanie backupu"), [cmd], callback_on_finish=self.restart_gui)
 
-        run_command_in_background(
-            self.session,
-            _("Przywracanie backupu"),
-            [cmd],
-            callback_on_finish=self.restart_gui
-        )
 
 def menu(menuid, **kwargs):
     if menuid == "scan":
@@ -1466,15 +1373,10 @@ def Plugins(**kwargs):
     screenwidth = getDesktop(0).size().width()
     if screenwidth and screenwidth == 1920:
         return [
-            PluginDescriptor(name="RaczQQ Updater", description=_('Updater by RaczQQ'),
-                             where=PluginDescriptor.WHERE_MENU, fnc=menu),
-            PluginDescriptor(name="RaczQQ Updater", description=_('Updater by RaczQQ'), icon='pluginhd.png',
-                             where=PluginDescriptor.WHERE_PLUGINMENU, fnc=main)
+            PluginDescriptor(name="RaczQQ Updater", description=_("Updater by RaczQQ"), where=PluginDescriptor.WHERE_MENU, fnc=menu),
+            PluginDescriptor(name="RaczQQ Updater", description=_("Updater by RaczQQ"), icon='pluginhd.png', where=PluginDescriptor.WHERE_PLUGINMENU, fnc=main)
         ]
-    else:
-        return [
-            PluginDescriptor(name="RaczQQ Updater", description=_('Updater by RaczQQ'),
-                             where=PluginDescriptor.WHERE_MENU, fnc=menu),
-            PluginDescriptor(name="RaczQQ Updater", description=_('Updater by RaczQQ'), icon='plugin.png',
-                             where=PluginDescriptor.WHERE_PLUGINMENU, fnc=main)
-        ]
+    return [
+        PluginDescriptor(name="RaczQQ Updater", description=_("Updater by RaczQQ"), where=PluginDescriptor.WHERE_MENU, fnc=menu),
+        PluginDescriptor(name="RaczQQ Updater", description=_("Updater by RaczQQ"), icon='plugin.png', where=PluginDescriptor.WHERE_PLUGINMENU, fnc=main)
+    ]
