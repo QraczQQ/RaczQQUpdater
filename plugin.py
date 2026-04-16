@@ -48,6 +48,7 @@ if PLUGIN_PATH not in sys.path:
     sys.path.append(PLUGIN_PATH)
 
 from picony import PiconyScreen
+from conf_backup import ConfBackupScreen
 
 PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
@@ -232,33 +233,37 @@ def _get_lists_from_repo_sync():
 
 
 class ChannelListUpdateMenu(Screen):
-    skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,620" title="RaczQQ Updater">
-            <widget source="list" render="Listbox" position="10,10" size="730,240" scrollbarMode="showOnDemand" transparent="1">
+    skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,560" title="RaczQQ Updater">
+            <widget source="list" render="Listbox" position="10,10" size="730,235" scrollbarMode="showOnDemand" transparent="1">
                 <convert type="TemplatedMultiContent">
                 {"template": [
                     MultiContentEntryText(pos = (70, 2), size = (660, 26), font=0, color=0xd282ff, flags = RT_HALIGN_LEFT, text = 0),
                     MultiContentEntryPixmapAlphaBlend(pos = (10, 6), size = (48, 48), png = 1, flags = BT_SCALE | BT_KEEP_ASPECT_RATIO),
-                    MultiContentEntryText(pos = (70, 30), size = (660, 26), font=1, flags = RT_VALIGN_TOP | RT_HALIGN_LEFT, text = 3),    
+                    MultiContentEntryText(pos = (70, 30), size = (660, 24), font=1, flags = RT_VALIGN_TOP | RT_HALIGN_LEFT, text = 3),
                     ],
-                    "fonts": [gFont("Regular", 24),gFont("Regular", 22)],
-                    "itemHeight": 62
+                    "fonts": [gFont("Regular", 24), gFont("Regular", 21)],
+                    "itemHeight": 60
                 }
                 </convert>
             </widget>
-<widget name="key_red" position="59,275" size="150,40" font="Regular;22" halign="center" valign="center" backgroundColor="red" />
-<widget name="key_green" position="225,275" size="150,40" font="Regular;22" halign="center" valign="center" backgroundColor="green" />
-<widget name="key_yellow" position="391,275" size="150,40" font="Regular;22" halign="center" valign="center" backgroundColor="yellow" />
-<widget name="key_blue" position="558,275" size="150,40" font="Regular;22" halign="center" valign="center" backgroundColor="blue" />
-<widget name="update" position="4,333" size="740,35" font="Regular;22" halign="center" backgroundColor="black" />
-<widget name="info" position="4,373" size="740,35" font="Regular;22" halign="center" backgroundColor="black" />
-<widget name="cpu" position="5,417" size="125,30" font="Regular;22" halign="left" foregroundColor="#ff5555" backgroundColor="black" />
-<widget name="ram" position="136,417" size="125,30" font="Regular;22" halign="left" foregroundColor="#55ff55" backgroundColor="black" />
-<widget name="iplocal" position="267,417" size="205,30" font="Regular;22" halign="left" foregroundColor="#55aaff" backgroundColor="black" />
-<widget name="iptun" position="477,417" size="205,30" font="Regular;22" halign="left" foregroundColor="#ffaa00" backgroundColor="black" />
-<widget name="readme_title" position="5,475" size="740,25" font="Regular;22" halign="left" foregroundColor="#d282ff" backgroundColor="black" />
-<widget name="readme" position="5,500" size="740,120" font="Regular;20" halign="left" valign="top" foregroundColor="#ffffff" backgroundColor="black" />
 
-</screen>'''
+    <widget name="key_red" position="70,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
+    <widget name="key_green" position="220,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3d9b4f" />
+    <widget name="key_yellow" position="370,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
+    <widget name="key_blue" position="520,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+
+    <widget name="update" position="10,302" size="730,30" font="Regular;21" halign="center" backgroundColor="black" />
+    <widget name="info" position="10,336" size="730,28" font="Regular;20" halign="center" backgroundColor="black" />
+
+    <widget name="cpu" position="10,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#ff5555" backgroundColor="black" />
+    <widget name="ram" position="135,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#55ff55" backgroundColor="black" />
+    <widget name="iplocal" position="260,372" size="220,26" font="Regular;20" halign="left" foregroundColor="#55aaff" backgroundColor="black" />
+    <widget name="iptun" position="485,372" size="245,26" font="Regular;20" halign="left" foregroundColor="#ffaa00" backgroundColor="black" />
+
+    <widget name="readme_title" position="10,410" size="730,24" font="Regular;22" halign="center" foregroundColor="#d282ff" backgroundColor="black" />
+    <widget name="readme" position="20,438" size="710,100" font="Regular;18" halign="left" valign="top" foregroundColor="#ffffff" backgroundColor="black" />
+
+    </screen>'''
 
     def _read_local_version(self, default="unknown"):
         """
@@ -310,8 +315,9 @@ class ChannelListUpdateMenu(Screen):
             if line:
                 lines.append(line)
 
-        text_out = "\n".join(lines[:6])
-        if len(lines) > 6:
+        max_lines = 5
+        text_out = "\n".join(lines[:max_lines])
+        if len(lines) > max_lines:
             text_out += "\n..."
         return text_out
 
@@ -435,6 +441,7 @@ class ChannelListUpdateMenu(Screen):
         ("live.png", _("Listy kanałów"), "channels", _("13.0E & 19.2E & 23.5E & 28.2E")),
         ("sat.png", _("Pobierz listę satelit"), "sat", _("Aktualizacja listy satelit")),
         ("picon.png", _("Picony"), "picony", _("Pobieranie i instalacja piconów")),
+        ("archive.png", _("Twórz backup plików systemowych"), "conf_backup", _("Archiwizacja plików systemowych")),
         ("archive.png", _("Twórz archiwum Pluginu"), "archive", _("RaczQQ Updater")),
     ]
 
@@ -464,7 +471,7 @@ class ChannelListUpdateMenu(Screen):
             )
         )
         self["health"] = Label("")
-        self["readme_title"] = Label("Informacje o RaczQQ Updater")
+        self["readme_title"] = Label("README / Informacje")
         self["readme"] = Label("")
 
         try:
@@ -519,6 +526,9 @@ class ChannelListUpdateMenu(Screen):
 
     def open_picony(self):
         self.session.open(PiconyScreen)
+
+    def open_conf_backup(self):
+        self.session.open(ConfBackupScreen)
 
     def _read_first_line(self, path, default="unknown"):
         try:
@@ -656,6 +666,7 @@ class ChannelListUpdateMenu(Screen):
             "channels": self.open_channels,
             "sat": self.update_sat,
             "picony": self.open_picony,
+            "conf_backup": self.open_conf_backup,
             "archive": self.open_archive,
         }
 
