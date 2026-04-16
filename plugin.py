@@ -260,7 +260,6 @@ class SatellitesUpdateProgress(Screen):
         except Exception:
             pass
 
-        self.close()
         self.session.open(TryQuitMainloop, 3)
 
     def _doRestart(self):
