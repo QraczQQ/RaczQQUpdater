@@ -61,7 +61,7 @@ except NameError:
     def _(txt):
         return txt
 
-PLUGIN_VERSION = "1.2.2"
+PLUGIN_VERSION = "1.2.1"
 PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
 PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
@@ -261,18 +261,7 @@ class SatellitesUpdateProgress(Screen):
             pass
 
         self.close()
-
-        self.session.open(
-            MessageBox,
-            _("Aktualizacja satellites.xml zakończona.\nWersja: %s\n\nRestart GUI zostanie wykonany za 3 sekundy.") % ver,
-            MessageBox.TYPE_INFO,
-            timeout=3
-        )
-
-        try:
-            self._restart_timer.start(3000, True)
-        except Exception as e:
-            print("[RaczQQ Updater] restart timer start error:", e)
+        self.session.open(TryQuitMainloop, 3)
 
     def _doRestart(self):
         try:
@@ -552,18 +541,8 @@ class ChannelListUpdateMenu(Screen):
             self.session.open(MessageBox, _("Błąd aktualizacji:\n{}" ).format(msg), MessageBox.TYPE_ERROR, timeout=6)
 
         def finish_ok():
-            try:
-                self.reload_settings_python()
-            except Exception:
-                traceback.print_exc()
-
-            self.session.open(
-                MessageBox,
-                _("Aktualizacja pluginu zakończona. Restart GUI..."),
-                MessageBox.TYPE_INFO,
-                timeout=3
-            )
-            reactor.callLater(3.2, lambda: self.session.open(TryQuitMainloop, 3))
+            self["update"].setText(_("Aktualizacja zakończona. Restart GUI..."))
+            self.session.open(TryQuitMainloop, 3)
 
         def worker():
             try:
