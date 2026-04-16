@@ -69,6 +69,12 @@ except NameError:
     def _(txt):
         return txt
 
+# Wersja pluginu trzymana bezpośrednio w plugin.py
+PLUGIN_VERSION = "1.2.1"
+
+PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
+PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
+
 def ensure_unicode(val):
     """Return a text (unicode on Py2) representation for safe internal processing."""
     if val is None:
@@ -142,8 +148,6 @@ def read_first_line(path, default="", encoding="utf-8"):
 def write_text_file(path, content, encoding="utf-8"):
     with io.open(path, "w", encoding=encoding) as f:
         f.write(ensure_unicode(content))
-PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
-PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
 
 def reload(self, answer):
@@ -252,6 +256,17 @@ class ChannelListUpdateMenu(Screen):
 </screen>'''
 
     def _read_local_version(self, default="unknown"):
+        """
+        Local version source of truth is PLUGIN_VERSION from plugin.py.
+        Fallback to plugin.version only for backward compatibility.
+        """
+        try:
+            v = ensure_unicode(globals().get("PLUGIN_VERSION", "")).strip()
+            if v:
+                return v
+        except Exception:
+            pass
+
         try:
             p = os.path.join(PLUGIN_PATH, "plugin.version")
             v = read_text_file(p, default="", encoding="utf-8").strip()
