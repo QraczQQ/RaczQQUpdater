@@ -43,6 +43,14 @@ from Components.Sources.StaticText import StaticText
 from Tools.Directories import SCOPE_PLUGINS, resolveFilename
 from Tools.LoadPixmap import LoadPixmap
 
+PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
+if PLUGIN_PATH not in sys.path:
+    sys.path.append(PLUGIN_PATH)
+
+from picony import PiconyScreen
+
+PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
+
 # === PLUGINS ===
 from Plugins.Plugin import PluginDescriptor
 
@@ -71,9 +79,6 @@ except NameError:
 
 # Wersja pluginu trzymana bezpośrednio w plugin.py
 PLUGIN_VERSION = "1.2.1"
-
-PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
-PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
 def ensure_unicode(val):
     """Return a text (unicode on Py2) representation for safe internal processing."""
@@ -429,6 +434,7 @@ class ChannelListUpdateMenu(Screen):
     MENU_ITEMS = [
         ("live.png", _("Listy kanałów"), "channels", _("13.0E & 19.2E & 23.5E & 28.2E")),
         ("sat.png", _("Pobierz listę satelit"), "sat", _("Aktualizacja listy satelit")),
+        ("picon.png", _("Picony"), "picony", _("Pobieranie i instalacja piconów")),
         ("archive.png", _("Twórz archiwum Pluginu"), "archive", _("RaczQQ Updater")),
     ]
 
@@ -510,6 +516,9 @@ class ChannelListUpdateMenu(Screen):
 
     def open_channels(self):
         self.session.open(channels)
+
+    def open_picony(self):
+        self.session.open(PiconyScreen)
 
     def _read_first_line(self, path, default="unknown"):
         try:
@@ -646,6 +655,7 @@ class ChannelListUpdateMenu(Screen):
         actions = {
             "channels": self.open_channels,
             "sat": self.update_sat,
+            "picony": self.open_picony,
             "archive": self.open_archive,
         }
 
