@@ -1,4 +1,4 @@
 
-Updater Plugin for DreamboxTwo (Py2 and Py3) with DreamOS or OEA images
+Updater Plugin for DreamboxTwo (Py3) with OEA images
 
 Created by RaczQQ
