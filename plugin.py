@@ -46,14 +46,6 @@ from Tools.LoadPixmap import LoadPixmap
 from Plugins.Plugin import PluginDescriptor
 from skin import parseColor
 
-IS_PY2 = sys.version_info[0] < 3
-IS_PY3 = not IS_PY2
-
-try:
-    _unicode_type = unicode  # noqa: F821  (Py2 built-in)
-except NameError:
-    _unicode_type = str
-
 try:
     _
 except NameError:
@@ -76,27 +68,10 @@ from addons import AddonsScreen
 # Helpers
 # ---------------------------------------------------------------------------
 
-def ensure_unicode(val):
-    """
-    Return *val* as a text string.
-    On Py2 returns unicode; on Py3 returns str.  Never raises.
-    """
+def ensure_str(val):
+    """Return *val* as a str. Never raises."""
     if val is None:
-        return u"" if IS_PY2 else ""
-    if IS_PY2:
-        try:
-            if isinstance(val, _unicode_type):
-                return val
-        except Exception:
-            pass
-        try:
-            return val.decode("utf-8", "ignore")
-        except Exception:
-            try:
-                return _unicode_type(str(val), "utf-8", "ignore")
-            except Exception:
-                return u""
-    # Py3
+        return ""
     if isinstance(val, bytes):
         return val.decode("utf-8", "ignore")
     try:
@@ -104,8 +79,7 @@ def ensure_unicode(val):
     except Exception:
         return ""
 
-# Convenience alias used in a few Py3-only paths.
-ensure_str = ensure_unicode
+ensure_unicode = ensure_str  # legacy alias
 
 
 def read_text_file(path, default="", encoding="utf-8"):
@@ -485,10 +459,9 @@ class ChannelListUpdateMenu(Screen):
         self["key_yellow"]   = Label(_("Wyczyść TMP"))
         self["key_blue"]     = Label(_("Wyczyść RAM"))
         self["info"]         = Label(
-            "Updater by RaczQQ | Wersja: {} | Data: {} | Python: {}".format(
+            "Updater by RaczQQ | Wersja: {} | Data: {} | Python: Py3".format(
                 PLUGIN_VERSION,
                 str(datetime.date.today()),
-                "Py3" if IS_PY3 else "Py2",
             )
         )
         self["readme_title"] = Label("README / Informacje")
@@ -1134,13 +1107,7 @@ class ManifestChannelsScreen(Screen):
     def buildList(self):
         entries = []
         for title, action in self.lists_menu:
-            try:
-                title_ui = ensure_unicode(title)
-                if IS_PY2:
-                    title_ui = title_ui.encode("utf-8")
-            except Exception:
-                title_ui = str(title)
-            entries.append((title_ui, action))
+            entries.append((ensure_str(title), action))
         self["list"].setList(entries)
         self["status"].setText(
             "Załadowano %d pozycji" % len(entries) if entries else "Brak pozycji do wyświetlenia"
