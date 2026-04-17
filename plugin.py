@@ -386,30 +386,66 @@ class SatellitesUpdateProgress(Screen):
 
 class ChannelListUpdateMenu(Screen):
     skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,560" title="RaczQQ Updater">
-            <widget source="list" render="Listbox" position="10,10" size="730,235" scrollbarMode="showOnDemand" transparent="1">
-                <convert type="TemplatedMultiContent">
-                {"template": [
-                    MultiContentEntryText(pos = (70, 2), size = (660, 26), font=0, color=0xd282ff, flags = RT_HALIGN_LEFT, text = 0),
-                    MultiContentEntryPixmapAlphaBlend(pos = (10, 6), size = (48, 48), png = 1, flags = BT_SCALE | BT_KEEP_ASPECT_RATIO),
-                    MultiContentEntryText(pos = (70, 30), size = (660, 24), font=1, flags = RT_VALIGN_TOP | RT_HALIGN_LEFT, text = 3),
-                    ],
-                    "fonts": [gFont("Regular", 24),gFont("Regular", 21)],
-                    "itemHeight": 60
-                }
-                </convert>
-            </widget>
-<widget name="key_red" position="70,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
-<widget name="key_green" position="220,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3d9b4f" />
-<widget name="key_yellow" position="370,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
-<widget name="key_blue" position="520,258" size="130,30" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
-<widget name="update" position="10,302" size="730,30" font="Regular;21" halign="center" backgroundColor="black" />
-<widget name="info" position="10,336" size="730,28" font="Regular;20" halign="center" backgroundColor="black" />
-<widget name="cpu" position="10,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#ff5555" backgroundColor="black" />
-<widget name="ram" position="135,372" size="120,26" font="Regular;20" halign="left" foregroundColor="#55ff55" backgroundColor="black" />
-<widget name="iplocal" position="260,372" size="220,26" font="Regular;20" halign="left" foregroundColor="#55aaff" backgroundColor="black" />
-<widget name="iptun" position="485,372" size="245,26" font="Regular;20" halign="left" foregroundColor="#ffaa00" backgroundColor="black" />
-<widget name="readme_title" position="10,410" size="730,24" font="Regular;22" halign="center" foregroundColor="#d282ff" backgroundColor="black" />
-<widget name="readme" position="20,438" size="710,100" font="Regular;18" halign="left" valign="top" foregroundColor="#ffffff" backgroundColor="black" />
+
+    <!-- ═══ górny pasek akcentu ═══ -->
+    <eLabel position="0,0" size="750,4" backgroundColor="#d282ff" />
+
+    <!-- ═══ lista menu ═══ -->
+    <widget source="list" render="Listbox"
+            position="10,10" size="730,240"
+            scrollbarMode="showOnDemand" transparent="1">
+        <convert type="TemplatedMultiContent">
+        {"template": [
+            MultiContentEntryText(pos=(70,2),  size=(650,26), font=0, color=0xd282ff, flags=RT_HALIGN_LEFT, text=0),
+            MultiContentEntryPixmapAlphaBlend(pos=(10,6), size=(48,48), png=1, flags=BT_SCALE|BT_KEEP_ASPECT_RATIO),
+            MultiContentEntryText(pos=(70,30), size=(650,24), font=1, flags=RT_VALIGN_TOP|RT_HALIGN_LEFT, text=3)
+        ],
+        "fonts": [gFont("Regular",24), gFont("Regular",20)],
+        "itemHeight": 60
+        }
+        </convert>
+    </widget>
+
+    <!-- ─── separator ─── -->
+    <eLabel position="10,252" size="730,1" backgroundColor="#332244" />
+
+    <!-- ═══ przyciski kolorowe — równomiernie wycentrowane ═══ -->
+    <widget name="key_red"    position="32,257"  size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
+    <widget name="key_green"  position="209,257" size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3d9b4f" />
+    <widget name="key_yellow" position="386,257" size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
+    <widget name="key_blue"   position="563,257" size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+
+    <!-- ─── separator ─── -->
+    <eLabel position="10,293" size="730,1" backgroundColor="#332244" />
+
+    <!-- ═══ status aktualizacji ═══ -->
+    <widget name="update" position="10,298" size="730,28" font="Regular;21" halign="center" backgroundColor="black" />
+
+    <!-- ─── separator ─── -->
+    <eLabel position="10,328" size="730,1" backgroundColor="#332244" />
+
+    <!-- ═══ sekcja README ═══ -->
+    <widget name="readme_title" position="10,332" size="730,22" font="Regular;21" halign="center" foregroundColor="#d282ff" backgroundColor="black" />
+    <widget name="readme"       position="20,357" size="710,118" font="Regular;18" halign="left" valign="top" foregroundColor="#777777" backgroundColor="black" />
+
+    <!-- ─── fioletowy separator akcentu ─── -->
+    <eLabel position="10,479" size="730,2" backgroundColor="#d282ff" />
+
+    <!-- ═══ pasek systemowy — CPU / RAM / IP wycentrowany ═══ -->
+    <widget name="cpu"     position="30,485"  size="165,26" font="Regular;19" halign="center" foregroundColor="#ff5555" backgroundColor="black" />
+    <widget name="ram"     position="205,485" size="165,26" font="Regular;19" halign="center" foregroundColor="#55ff55" backgroundColor="black" />
+    <widget name="iplocal" position="380,485" size="165,26" font="Regular;19" halign="center" foregroundColor="#55aaff" backgroundColor="black" />
+    <widget name="iptun"   position="555,485" size="165,26" font="Regular;19" halign="center" foregroundColor="#ffaa00" backgroundColor="black" />
+
+    <!-- ─── separator ─── -->
+    <eLabel position="10,514" size="730,1" backgroundColor="#332244" />
+
+    <!-- ═══ info / wersja — na samym dole ═══ -->
+    <widget name="info" position="10,518" size="730,24" font="Regular;18" halign="center" foregroundColor="#505050" backgroundColor="black" />
+
+    <!-- ═══ dolny pasek akcentu ═══ -->
+    <eLabel position="0,556" size="750,4" backgroundColor="#d282ff" />
+
 </screen>'''
 
     def __init__(self, session):
