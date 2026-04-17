@@ -3,6 +3,7 @@
 import http.cookiejar
 import io
 import os
+import re
 import shutil
 import ssl
 import subprocess
@@ -47,7 +48,7 @@ PICON_LIST_URLS = [
 
 DOWNLOAD_CHUNK   = 65536
 DOWNLOAD_TIMEOUT = 120
-PLUGIN_VERSION   = "1.2.0"
+PLUGIN_VERSION   = "1.2.4"
 RUNTIME_CONFIG_FILE = "/etc/enigma2/RaczQQUpdater.conf"
 
 DEFAULT_RUNTIME_SETTINGS = {
@@ -64,6 +65,7 @@ _RUNTIME_SETTINGS = None
 # ---------------------------------------------------------------------------
 # Pomocnicze funkcje modułu
 # ---------------------------------------------------------------------------
+
 
 def ensure_dir(path):
     if not os.path.exists(path):
@@ -163,7 +165,7 @@ def _find_7za():
     for binary in ("7za", "7z"):
         try:
             proc = subprocess.Popen(["which", binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            out, _ = proc.communicate()
+            out, _err = proc.communicate()
             path = out.decode("utf-8", "ignore").strip()
             if path and os.path.exists(path):
                 return path
@@ -287,7 +289,6 @@ def _pause_openvpn_for_download(status_cb=None):
             pass
 
     rc, out, err = _run_shell_command(stop_cmd, timeout=30)
-    _log("VPN stop rc=%s" % rc)
 
     wait_down = max(1, int(settings.get("vpn_wait_down") or 4))
     if (rc != 0) and _vpn_is_running():
@@ -327,7 +328,6 @@ def _resume_openvpn_after_download(vpn_state, status_cb=None):
             pass
 
     rc, out, err = _run_shell_command(start_cmd, timeout=30)
-    _log("VPN start rc=%s" % rc)
 
     wait_up = max(1, int(settings.get("vpn_wait_up") or 10))
     if (rc != 0) and (not _vpn_is_running()):
@@ -449,7 +449,6 @@ def _validate_downloaded_archive(path, meta):
     if _is_download_block_page(path, meta):
         raise DownloadValidationError(
             "Serwer picon.cz zablokowal pobieranie i zamiast archiwum zwrocil strone Error-DownLoad-VP.\n\n"
-            "To nie jest blad rozpakowania 7z, tylko blokada po stronie serwera.\n"
             "Najczestsze przyczyny: VPN / proxy / CGNAT / nierozpoznane IP / zbyt czeste proby pobrania.\n\n"
             "Final URL: %s\nContent-Type: %s\nLog: %s" % (
                 meta.get("final_url") or "brak",
@@ -476,30 +475,336 @@ def _validate_downloaded_archive(path, meta):
 
 def _download_archive_with_retry(url, dest, progress_cb=None):
     errors = []
-    for label, func in (("direct", _urllib_download), ("cookie-ping", _urllib_download_cookie_ping)):
+    for _label, func in (("direct", _urllib_download), ("cookie-ping", _urllib_download_cookie_ping)):
         try:
             if os.path.exists(dest):
                 os.remove(dest)
             meta = func(url, dest, progress_cb=progress_cb)
             archive_type = _validate_downloaded_archive(dest, meta)
             meta["archive_type"] = archive_type
-            _log(
-                "DOWNLOAD %s ok size=%s type=%s final=%s" % (
-                    label,
-                    _fmt_size(meta.get("downloaded") or 0),
-                    meta.get("content_type") or "brak",
-                    meta.get("final_url") or "brak",
-                )
-            )
             return meta
         except Exception as e:
-            errors.append("%s: %s" % (label, e))
+            errors.append(str(e))
     raise Exception(" ; ".join(errors) or "Nie udalo sie pobrac archiwum.")
+
+
+def _normalize_archive_name(name):
+    txt = (name or "").strip()
+    low = txt.lower()
+    if low.endswith("chocholousek7z"):
+        txt = txt[:-2] + ".7z"
+    return txt
+
+
+def _parse_pack_meta(name, pack_id):
+    original = _normalize_archive_name(name)
+    low_original = original.lower()
+
+    if not low_original.endswith(".7z"):
+        return None
+    if "id_for_permalinks" in low_original:
+        return None
+
+    base = original[:-3]
+    low = base.lower()
+    suffix = "_by_chocholousek"
+    idx = low.rfind(suffix)
+    if idx != -1:
+        base = base[:idx]
+
+    parts = [p.strip() for p in base.split("-") if p.strip()]
+    if len(parts) < 3:
+        return None
+
+    kind = parts[0]
+    size = parts[1]
+    satellite = "-".join(parts[2:])
+
+    return {
+        "id": str(pack_id),
+        "name": original,
+        "kind": kind or _("nieznany"),
+        "size": size or _("nieznany"),
+        "satellite": satellite or original,
+        "url": PICON_DOWNLOAD_BASE + str(pack_id) + "/",
+    }
+
+
+def _size_sort_key(size_txt):
+    txt = (size_txt or "").strip().lower()
+    m = re.match(r"^(\d+)x(\d+)$", txt)
+    if m:
+        w = int(m.group(1))
+        h = int(m.group(2))
+        return (0, w * h, w, h, txt)
+    return (1, 999999999, 0, 0, txt)
+
+
+def _satellite_sort_key(sat_txt):
+    txt = (sat_txt or "").strip().upper()
+    m = re.match(r"^(\d+(?:\.\d+)?)([EW])$", txt)
+    if m:
+        pos = float(m.group(1))
+        if m.group(2) == "W":
+            pos = -pos
+        return (0, pos, txt)
+    return (1, txt)
+
+
+def _extract_archive_to_target(archive_path, extract_dir, target_dir,
+                               content_type="", final_url="", archive_type=""):
+    if not os.path.exists(archive_path) or os.path.getsize(archive_path) == 0:
+        raise Exception("Plik archiwum jest pusty lub nie istnieje.")
+
+    archive_type = archive_type or _detect_archive_type(archive_path)
+    ensure_dir(extract_dir)
+    ensure_dir(target_dir)
+
+    if archive_type == "zip":
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(extract_dir)
+    elif archive_type == "tar.gz":
+        with tarfile.open(archive_path, "r:gz") as tf:
+            tf.extractall(extract_dir)
+    elif archive_type == "7z":
+        bin_7z = _find_7za()
+        if not bin_7z:
+            raise Exception(
+                "Archiwum 7z — binarki 7za/7z nie znaleziono.\n"
+                "Zainstaluj: opkg install 7zip"
+            )
+        proc = subprocess.Popen(
+            [bin_7z, "e", "-y", "-o" + extract_dir, archive_path, "*.png"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate()
+        if proc.returncode != 0:
+            out_txt = out.decode("utf-8", "ignore").strip()
+            err_txt = err.decode("utf-8", "ignore").strip()
+            raise Exception(
+                "Blad %s (kod %d):\n%s" % (
+                    bin_7z,
+                    proc.returncode,
+                    (err_txt or out_txt or "brak wyjscia")[:400],
+                )
+            )
+    else:
+        head_hex, head_ascii = _head_info(archive_path)
+        is_html = head_ascii.lstrip().startswith(("<", "<!"))
+        raise Exception(
+            "Nieznany format archiwum%s\n"
+            "Rozmiar: %s  Content-Type: %s\n"
+            "URL: ...%s\n"
+            "Hex: %s\n"
+            "Tekst: %s" % (
+                " (HTML — blad serwera!)" if is_html else "",
+                _fmt_size(os.path.getsize(archive_path)),
+                content_type or "brak",
+                (final_url or "")[-60:],
+                head_hex,
+                head_ascii[:48],
+            )
+        )
+
+    copied = 0
+    for root, _dirs, files in os.walk(extract_dir):
+        for fname in files:
+            if fname.lower().endswith(".png"):
+                src = os.path.join(root, fname)
+                dst = os.path.join(target_dir, fname)
+                shutil.copy2(src, dst)
+                copied += 1
+
+    try:
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        os.remove(archive_path)
+    except Exception:
+        pass
+
+    if copied == 0:
+        raise Exception(
+            "Nie znaleziono plikow *.png w archiwum.\n"
+            "Paczka moze byc uszkodzona lub pusta."
+        )
+
+    return copied
+
+
+# ---------------------------------------------------------------------------
+# Ekran wyboru satelit
+# ---------------------------------------------------------------------------
+
+
+class SatelliteSelectionScreen(Screen):
+    skin = """
+    <screen name="SatelliteSelectionScreen" position="center,center" size="900,560"
+            title="Wybierz satelity">
+
+        <eLabel position="0,0" size="900,4" backgroundColor="#d282ff" />
+
+        <widget name="key_red"    position="20,10"  size="160,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
+        <widget name="key_green"  position="200,10" size="200,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#2f8f46" />
+        <widget name="key_yellow" position="420,10" size="200,32" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
+        <widget name="key_blue"   position="640,10" size="200,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+
+        <eLabel position="10,48" size="880,1" backgroundColor="#332244" />
+
+        <widget name="summary" position="10,54" size="880,28"
+                font="Regular;22" halign="center"
+                foregroundColor="#ffffff" backgroundColor="black" />
+
+        <widget source="list" render="Listbox"
+                position="10,90" size="880,330"
+                scrollbarMode="showOnDemand" transparent="1">
+            <convert type="TemplatedMultiContent">
+            {"template": [
+                MultiContentEntryText(pos=(8,5),  size=(870,28), font=0,
+                    color=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
+                MultiContentEntryText(pos=(8,35), size=(870,20), font=1,
+                    color=0x888888, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=1)
+            ],
+            "fonts": [gFont("Regular",24), gFont("Regular",18)],
+            "itemHeight": 58
+            }
+            </convert>
+        </widget>
+
+        <eLabel position="10,428" size="880,2" backgroundColor="#d282ff" />
+
+        <widget name="count" position="10,438" size="880,26"
+                font="Regular;20" halign="center"
+                foregroundColor="#aaaaaa" backgroundColor="black" />
+        <widget name="target" position="10,468" size="880,24"
+                font="Regular;19" halign="center"
+                foregroundColor="#55aaff" backgroundColor="black" />
+        <widget name="status" position="10,498" size="880,24"
+                font="Regular;18" halign="center"
+                foregroundColor="#505050" backgroundColor="black" />
+
+        <eLabel position="0,556" size="900,4" backgroundColor="#d282ff" />
+
+    </screen>"""
+
+    def __init__(self, session, pack_infos, kind, size, target_dir):
+        Screen.__init__(self, session)
+        self.session = session
+        self.pack_infos = sorted(pack_infos, key=lambda x: _satellite_sort_key(x.get("satellite")))
+        self.kind = kind
+        self.size = size
+        self.target_dir = target_dir
+        self.selected = set()
+
+        self["key_red"] = Label(_("Wstecz"))
+        self["key_green"] = Label(_("Pobierz"))
+        self["key_yellow"] = Label(_("Wszystkie"))
+        self["key_blue"] = Label(_("Brak"))
+        self["summary"] = Label("")
+        self["list"] = List([])
+        self["count"] = Label("")
+        self["target"] = Label("")
+        self["status"] = Label(_("OK = zaznacz / odznacz"))
+
+        self["actions"] = ActionMap(
+            ["OkCancelActions", "ColorActions", "DirectionActions"],
+            {
+                "ok": self.toggleCurrent,
+                "cancel": self.keyRed,
+                "back": self.keyRed,
+                "red": self.keyRed,
+                "green": self.keyGreen,
+                "yellow": self.selectAll,
+                "blue": self.selectNone,
+                "up": self.keyUp,
+                "down": self.keyDown,
+                "left": self.toggleCurrent,
+                "right": self.toggleCurrent,
+            },
+            -1,
+        )
+
+        self._rebuild()
+
+    def _rebuild(self):
+        cur = self["list"].getCurrent()
+        current_sat = cur[2] if cur else ""
+        entries = []
+        for pack in self.pack_infos:
+            sat = pack.get("satellite") or "?"
+            mark = "[x]" if sat in self.selected else "[ ]"
+            title = "%s %s" % (mark, sat)
+            subtitle = "%s  |  ID: %s" % (pack.get("name") or sat, pack.get("id") or "?")
+            entries.append((title, subtitle, sat))
+        self["list"].setList(entries)
+        if current_sat:
+            for idx, entry in enumerate(entries):
+                if entry[2] == current_sat:
+                    try:
+                        self["list"].setIndex(idx)
+                    except Exception:
+                        pass
+                    break
+        self["summary"].setText(_("Rodzaj: %s   |   Rozmiar: %s") % (self.kind, self.size))
+        self["count"].setText(_("Zaznaczono %d z %d satelit") % (len(self.selected), len(self.pack_infos)))
+        self["target"].setText(_("Katalog docelowy: %s") % self.target_dir)
+
+    def _current_satellite(self):
+        cur = self["list"].getCurrent()
+        if not cur:
+            return ""
+        return cur[2]
+
+    def toggleCurrent(self):
+        sat = self._current_satellite()
+        if not sat:
+            return
+        if sat in self.selected:
+            self.selected.remove(sat)
+        else:
+            self.selected.add(sat)
+        self._rebuild()
+
+    def selectAll(self):
+        self.selected = set([p.get("satellite") for p in self.pack_infos])
+        self._rebuild()
+
+    def selectNone(self):
+        self.selected = set()
+        self._rebuild()
+
+    def keyUp(self):
+        try:
+            self["list"].selectPrevious()
+        except Exception:
+            pass
+
+    def keyDown(self):
+        try:
+            self["list"].selectNext()
+        except Exception:
+            pass
+
+    def keyRed(self):
+        self.close([])
+
+    def keyGreen(self):
+        selected_packs = []
+        for pack in self.pack_infos:
+            if (pack.get("satellite") or "") in self.selected:
+                selected_packs.append(pack)
+        if not selected_packs:
+            self.session.open(
+                MessageBox,
+                _("Najpierw zaznacz co najmniej jednego satelite."),
+                MessageBox.TYPE_INFO, timeout=5,
+            )
+            return
+        self.close(selected_packs)
 
 
 # ---------------------------------------------------------------------------
 # PiconyScreen
 # ---------------------------------------------------------------------------
+
 
 class PiconyScreen(Screen):
     skin = """
@@ -509,13 +814,14 @@ class PiconyScreen(Screen):
         <eLabel position="0,0" size="900,4" backgroundColor="#d282ff" />
 
         <widget name="key_red"    position="20,10"  size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
-        <widget name="key_yellow" position="235,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
-        <widget name="key_blue"   position="450,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+        <widget name="key_green"  position="235,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#2f8f46" />
+        <widget name="key_yellow" position="450,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
+        <widget name="key_blue"   position="665,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
 
         <eLabel position="10,48" size="880,1" backgroundColor="#332244" />
 
         <widget source="list" render="Listbox"
-                position="10,54" size="880,390"
+                position="10,54" size="880,250"
                 scrollbarMode="showOnDemand" transparent="1">
             <convert type="TemplatedMultiContent">
             {"template": [
@@ -530,17 +836,23 @@ class PiconyScreen(Screen):
             </convert>
         </widget>
 
-        <eLabel position="10,448" size="880,2" backgroundColor="#d282ff" />
+        <eLabel position="10,312" size="880,2" backgroundColor="#d282ff" />
 
-        <widget name="status" position="10,454" size="880,26"
+        <widget name="summary" position="10,322" size="880,30"
+                font="Regular;22" halign="center"
+                foregroundColor="#ffffff" backgroundColor="black" />
+        <widget name="status" position="10,360" size="880,26"
                 font="Regular;20" halign="center"
                 foregroundColor="#aaaaaa" backgroundColor="black" />
-        <widget name="target" position="10,484" size="880,24"
+        <widget name="target" position="10,392" size="880,24"
                 font="Regular;19" halign="center"
                 foregroundColor="#55aaff" backgroundColor="black" />
-        <widget name="count"  position="10,512" size="880,22"
+        <widget name="count"  position="10,422" size="880,22"
                 font="Regular;18" halign="center"
                 foregroundColor="#505050" backgroundColor="black" />
+        <widget name="hint"  position="10,452" size="880,56"
+                font="Regular;18" halign="center" valign="center"
+                foregroundColor="#bbbbbb" backgroundColor="black" />
 
         <eLabel position="0,556" size="900,4" backgroundColor="#d282ff" />
 
@@ -553,39 +865,50 @@ class PiconyScreen(Screen):
         "/media/usb/picon/",
     ]
 
+    MENU_KIND = "kind"
+    MENU_SIZE = "size"
+    MENU_TARGET = "target"
+
     def __init__(self, session):
         Screen.__init__(self, session)
         self.session = session
 
         self._all_packs = []
-        self._filtered_packs = []
-        self._search_query = ""
-        self.target_dir_index = 0
+        self._kind_choices = []
+        self._size_choices = []
+        self._selected_kind = ""
+        self._selected_size = ""
+        self._selected_target = self.TARGET_DIRS[0]
 
-        self["key_red"] = Label(_("Szukaj"))
-        self["key_yellow"] = Label(_("Katalog"))
-        self["key_blue"] = Label(_("Wyczysc"))
+        self["key_red"] = Label(_("Wyczysc"))
+        self["key_green"] = Label(_("Satelity"))
+        self["key_yellow"] = Label(_("Odswiez"))
+        self["key_blue"] = Label(_("Zamknij"))
         self["list"] = List([])
+        self["summary"] = Label("")
         self["status"] = Label(_("Pobieranie listy piconow z GitHub..."))
         self["target"] = Label("")
         self["count"] = Label("")
+        self["hint"] = Label(_("Lewo/Prawo = zmiana  |  OK/Green = wybor satelit"))
 
         self["actions"] = ActionMap(
             ["OkCancelActions", "ColorActions", "DirectionActions"],
             {
-                "ok": self.keyOK,
+                "ok": self.openSatelliteSelection,
                 "cancel": self.close,
                 "back": self.close,
-                "red": self.openSearch,
-                "yellow": self.changeTargetDir,
-                "blue": self.clearTargetDir,
+                "red": self.clearTargetDir,
+                "green": self.openSatelliteSelection,
+                "yellow": self._loadListAsync,
+                "blue": self.close,
                 "up": self.keyUp,
                 "down": self.keyDown,
+                "left": self.keyLeft,
+                "right": self.keyRight,
             },
             -1,
         )
 
-        self._refreshTargetLabel()
         self._loadListAsync()
 
     def _setStatus(self, msg):
@@ -595,6 +918,8 @@ class PiconyScreen(Screen):
             pass
 
     def _loadListAsync(self):
+        self._setStatus(_("Pobieranie listy piconow z GitHub..."))
+
         def worker():
             log_path = os.path.join(PICON_TMP_DIR, "id_for_permalinks.log")
             ensure_dir(PICON_TMP_DIR)
@@ -634,11 +959,17 @@ class PiconyScreen(Screen):
                 with io.open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                     for line in f:
                         line = line.rstrip("\n\r")
-                        if len(line) >= 5:
-                            pack_id = line[:4].strip()
-                            name = line[4:].strip()
-                            if pack_id and name:
-                                packs.append((name, pack_id))
+                        if not line:
+                            continue
+                        parts = line.split(None, 1)
+                        if len(parts) != 2:
+                            continue
+                        pack_id, name = parts[0].strip(), parts[1].strip()
+                        if not (pack_id and name):
+                            continue
+                        meta = _parse_pack_meta(name, pack_id)
+                        if meta:
+                            packs.append(meta)
             except Exception as e:
                 reactor.callFromThread(self._setStatus, _("Blad parsowania listy: %s") % str(e))
                 return
@@ -649,53 +980,115 @@ class PiconyScreen(Screen):
 
     def _applyFullList(self, packs):
         self._all_packs = packs
-        self._filtered_packs = list(packs)
-        self._rebuildListWidget()
-        self._setStatus(_("Wybierz paczke i nacisnij OK  |  Czerwony = szukaj"))
+        kind_choices = []
+        for pack in packs:
+            kind = pack.get("kind")
+            if kind and kind not in kind_choices:
+                kind_choices.append(kind)
+        self._kind_choices = kind_choices or [_("brak danych")]
 
-    def openSearch(self):
-        try:
-            from Screens.VirtualKeyBoard import VirtualKeyBoard
-            self.session.openWithCallback(
-                self._searchCallback,
-                VirtualKeyBoard,
-                title=_("Szukaj paczki piconow:"),
-                text=self._search_query,
-            )
-        except Exception:
-            self._search_query = ""
-            self._applyFilter()
-            self._setStatus(_("Wyszukiwarka niedostepna — wyswietlono pelna liste"))
+        if self._selected_kind not in self._kind_choices:
+            self._selected_kind = self._kind_choices[0]
 
-    def _searchCallback(self, text):
-        if text is not None:
-            self._search_query = text.strip()
-        self._applyFilter()
+        self._refreshSizeChoices()
+        self._rebuildMenuList()
+        self._setStatus(_("Wybierz rodzaj, rozmiar i katalog. Nastepnie wybierz satelity."))
 
-    def _applyFilter(self):
-        q = self._search_query.lower()
-        if q:
-            self._filtered_packs = [(n, i) for n, i in self._all_packs if q in n.lower()]
-        else:
-            self._filtered_packs = list(self._all_packs)
-        self._rebuildListWidget()
+    def _refreshSizeChoices(self):
+        sizes = []
+        for pack in self._all_packs:
+            if pack.get("kind") == self._selected_kind:
+                size = pack.get("size")
+                if size and size not in sizes:
+                    sizes.append(size)
+        self._size_choices = sorted(sizes, key=_size_sort_key)
+        if not self._size_choices:
+            self._size_choices = [_("brak danych")]
+        if self._selected_size not in self._size_choices:
+            self._selected_size = self._size_choices[0]
 
-    def _rebuildListWidget(self):
-        entries = []
-        for name, pack_id in self._filtered_packs:
-            subtitle = "ID: %s  |  %s%s/" % (pack_id, PICON_DOWNLOAD_BASE, pack_id)
-            entries.append((name, subtitle, name, pack_id))
+    def _matchingPacks(self):
+        matched = []
+        for pack in self._all_packs:
+            if pack.get("kind") != self._selected_kind:
+                continue
+            if pack.get("size") != self._selected_size:
+                continue
+            matched.append(pack)
+        matched.sort(key=lambda x: _satellite_sort_key(x.get("satellite")))
+        return matched
+
+    def _rebuildMenuList(self):
+        cur = self["list"].getCurrent()
+        current_key = cur[2] if cur else self.MENU_KIND
+        matched = self._matchingPacks()
+        sat_count = len(set([p.get("satellite") for p in matched]))
+
+        entries = [
+            (
+                _("Rodzaj"),
+                _("%s  |  %d wariantow") % (self._selected_kind, len(self._kind_choices)),
+                self.MENU_KIND,
+            ),
+            (
+                _("Rozmiar"),
+                _("%s  |  %d wariantow") % (self._selected_size, len(self._size_choices)),
+                self.MENU_SIZE,
+            ),
+            (
+                _("Katalog docelowy"),
+                self._selected_target,
+                self.MENU_TARGET,
+            ),
+        ]
         self["list"].setList(entries)
+        for idx, entry in enumerate(entries):
+            if entry[2] == current_key:
+                try:
+                    self["list"].setIndex(idx)
+                except Exception:
+                    pass
+                break
+        self["summary"].setText(_("Dopasowane paczki: %d   |   Dostepne satelity: %d") % (len(matched), sat_count))
+        self["target"].setText(_("Katalog docelowy: %s") % self._selected_target)
+        self["count"].setText(_("Rodzaj: %s   |   Rozmiar: %s") % (self._selected_kind, self._selected_size))
 
-        total = len(self._all_packs)
-        shown = len(self._filtered_packs)
-        q = self._search_query
-        if q:
-            self["count"].setText(_('Filtr: "%s" — %d / %d wynikow') % (q, shown, total))
-        elif total:
-            self["count"].setText(_("%d paczek piconow dostepnych") % total)
-        else:
-            self["count"].setText("")
+    def _currentMenuKey(self):
+        cur = self["list"].getCurrent()
+        if not cur:
+            return ""
+        return cur[2]
+
+    def _cycleCurrent(self, step):
+        key = self._currentMenuKey()
+        if not key:
+            return
+
+        if key == self.MENU_KIND:
+            values = self._kind_choices
+            if not values:
+                return
+            idx = values.index(self._selected_kind) if self._selected_kind in values else 0
+            self._selected_kind = values[(idx + step) % len(values)]
+            self._refreshSizeChoices()
+        elif key == self.MENU_SIZE:
+            values = self._size_choices
+            if not values:
+                return
+            idx = values.index(self._selected_size) if self._selected_size in values else 0
+            self._selected_size = values[(idx + step) % len(values)]
+        elif key == self.MENU_TARGET:
+            values = self.TARGET_DIRS
+            idx = values.index(self._selected_target) if self._selected_target in values else 0
+            self._selected_target = values[(idx + step) % len(values)]
+
+        self._rebuildMenuList()
+
+    def keyLeft(self):
+        self._cycleCurrent(-1)
+
+    def keyRight(self):
+        self._cycleCurrent(1)
 
     def keyUp(self):
         try:
@@ -709,15 +1102,8 @@ class PiconyScreen(Screen):
         except Exception:
             pass
 
-    def _refreshTargetLabel(self):
-        self["target"].setText(_("Katalog docelowy: %s") % self.getTargetDir())
-
     def getTargetDir(self):
-        return self.TARGET_DIRS[self.target_dir_index]
-
-    def changeTargetDir(self):
-        self.target_dir_index = (self.target_dir_index + 1) % len(self.TARGET_DIRS)
-        self._refreshTargetLabel()
+        return self._selected_target
 
     def clearTargetDir(self):
         target = self.getTargetDir()
@@ -753,46 +1139,73 @@ class PiconyScreen(Screen):
                 MessageBox.TYPE_ERROR, timeout=6,
             )
 
-    def keyOK(self):
-        sel = self["list"].getCurrent()
-        if not sel:
+    def openSatelliteSelection(self):
+        if not self._all_packs:
+            self.session.open(
+                MessageBox,
+                _("Lista paczek nie jest jeszcze gotowa."),
+                MessageBox.TYPE_INFO, timeout=5,
+            )
             return
-        name = sel[0]
-        pack_id = sel[3]
-        url = PICON_DOWNLOAD_BASE + pack_id + "/"
+
+        matched = self._matchingPacks()
+        if not matched:
+            self.session.open(
+                MessageBox,
+                _("Brak paczek dla wybranego rodzaju i rozmiaru."),
+                MessageBox.TYPE_INFO, timeout=5,
+            )
+            return
 
         self.session.openWithCallback(
-            lambda answer: self._confirmInstall(answer, name, pack_id, url),
+            self._satellitesChosen,
+            SatelliteSelectionScreen,
+            matched,
+            self._selected_kind,
+            self._selected_size,
+            self.getTargetDir(),
+        )
+
+    def _satellitesChosen(self, selected_packs):
+        if not selected_packs:
+            return
+
+        satellites = [p.get("satellite") for p in selected_packs]
+        msg = _(
+            "Zainstalowac %d paczek piconow?\n\n"
+            "Rodzaj: %s\n"
+            "Rozmiar: %s\n"
+            "Satelity: %s\n\n"
+            "Katalog docelowy:\n%s"
+        ) % (
+            len(selected_packs),
+            self._selected_kind,
+            self._selected_size,
+            ", ".join(satellites),
+            self.getTargetDir(),
+        )
+        self.session.openWithCallback(
+            lambda answer: self._confirmQueue(answer, selected_packs),
             MessageBox,
-            _("Zainstalowac paczke piconow?\n\n%s\n\nKatalog docelowy:\n%s") % (
-                name, self.getTargetDir()),
+            msg,
             MessageBox.TYPE_YESNO,
         )
 
-    def _confirmInstall(self, answer, name, pack_id, url):
+    def _confirmQueue(self, answer, selected_packs):
         if not answer:
             return
 
-        target_dir = self.getTargetDir()
-        archive_path = os.path.join(PICON_TMP_DIR, "picon_%s.download" % pack_id)
-        extract_dir = os.path.join(PICON_TMP_DIR, "extract_%s" % pack_id)
-
-        ensure_dir(PICON_TMP_DIR)
-        ensure_dir(target_dir)
-
         if _find_7za() is None:
             self.session.openWithCallback(
-                lambda ans: self._install7zThenDownload(
-                    ans, name, pack_id, url, archive_path, extract_dir, target_dir),
+                lambda ans: self._install7zThenQueue(ans, selected_packs),
                 MessageBox,
                 _("Pakiet 7zip nie jest zainstalowany.\n\nCzy zainstalowac go teraz?\n(opkg install 7zip)"),
                 MessageBox.TYPE_YESNO,
             )
         else:
-            self._doDownload(name, pack_id, url, archive_path, extract_dir, target_dir)
+            self._startInstallQueue(selected_packs)
 
-    def _install7zThenDownload(self, answer, name, pack_id, url,
-                               archive_path, extract_dir, target_dir):
+    def _install7zThenQueue(self, answer, selected_packs):
         if not answer:
             self._setStatus(_("Anulowano — 7zip jest wymagany."))
             return
@@ -805,14 +1218,14 @@ class PiconyScreen(Screen):
             "|| { echo '>>> BLAD instalacji 7zip!'; exit 1; }"
         )
         self.session.openWithCallback(
-            lambda *a: self._after7zInstall(name, pack_id, url, archive_path, extract_dir, target_dir),
+            lambda *a: self._after7zInstall(selected_packs),
             Console,
             title=_("Instalacja 7zip"),
             cmdlist=[cmd],
             closeOnSuccess=False,
         )
 
-    def _after7zInstall(self, name, pack_id, url, archive_path, extract_dir, target_dir):
+    def _after7zInstall(self, selected_packs):
         if _find_7za() is None:
             self._setStatus(_("Blad: 7zip nadal niedostepny."))
             self.session.open(
@@ -821,199 +1234,161 @@ class PiconyScreen(Screen):
                 MessageBox.TYPE_ERROR, timeout=10,
             )
             return
-        self._doDownload(name, pack_id, url, archive_path, extract_dir, target_dir)
+        self._startInstallQueue(selected_packs)
 
-    def _doDownload(self, name, pack_id, url, archive_path, extract_dir, target_dir):
-        self._setStatus(_("Laczenie z picon.cz..."))
-        _log("INSTALL start pack=%s id=%s" % (name, pack_id))
+    def _startInstallQueue(self, selected_packs):
+        target_dir = self.getTargetDir()
+        ensure_dir(PICON_TMP_DIR)
+        ensure_dir(target_dir)
+        queue = list(selected_packs)
+        total = len(queue)
+        _log("INSTALL queue start count=%d kind=%s size=%s" % (total, self._selected_kind, self._selected_size))
 
-        def _on_progress(downloaded, total):
-            if total:
-                pct = int(downloaded * 100 / total)
-                reactor.callFromThread(
-                    self._setStatus,
-                    _("Pobieranie %s — %d%% (%s / %s)") % (
-                        name, pct, _fmt_size(downloaded), _fmt_size(total)),
-                )
-            else:
-                reactor.callFromThread(
-                    self._setStatus,
-                    _("Pobieranie %s — %s") % (name, _fmt_size(downloaded)),
-                )
+        def make_progress_cb(pack, idx):
+            def _on_progress(downloaded, total_bytes):
+                if total_bytes:
+                    pct = int(downloaded * 100 / total_bytes)
+                    txt = _("Pobieranie %d/%d: %s — %d%% (%s / %s)") % (
+                        idx, total, pack.get("satellite") or pack.get("name"),
+                        pct, _fmt_size(downloaded), _fmt_size(total_bytes))
+                else:
+                    txt = _("Pobieranie %d/%d: %s — %s") % (
+                        idx, total, pack.get("satellite") or pack.get("name"),
+                        _fmt_size(downloaded))
+                reactor.callFromThread(self._setStatus, txt)
+            return _on_progress
 
         def worker():
-            vpn_state = None
-            vpn_warning = ""
+            copied_total = 0
+            result_lines = []
+            warnings = []
+            last_vpn_state = None
             try:
-                ensure_dir(PICON_TMP_DIR)
-                ensure_dir(extract_dir)
-                try:
-                    os.remove(archive_path)
-                except Exception:
-                    pass
+                for idx, pack in enumerate(queue, 1):
+                    pack_name = pack.get("name") or pack.get("satellite") or pack.get("id")
+                    pack_id = pack.get("id")
+                    url = pack.get("url") or (PICON_DOWNLOAD_BASE + str(pack_id) + "/")
+                    archive_path = os.path.join(PICON_TMP_DIR, "picon_%s.download" % pack_id)
+                    extract_dir = os.path.join(PICON_TMP_DIR, "extract_%s" % pack_id)
 
-                vpn_state = _pause_openvpn_for_download(
-                    status_cb=lambda txt: reactor.callFromThread(self._setStatus, txt)
-                )
-
-                meta = _download_archive_with_retry(url, archive_path, progress_cb=_on_progress)
-                downloaded = meta["downloaded"]
-                content_type = meta["content_type"]
-                final_url = meta["final_url"]
-                archive_type = meta.get("archive_type", "")
-
-                if vpn_state and vpn_state.get("should_resume"):
                     try:
-                        _resume_openvpn_after_download(
-                            vpn_state,
+                        if os.path.exists(archive_path):
+                            os.remove(archive_path)
+                    except Exception:
+                        pass
+                    try:
+                        shutil.rmtree(extract_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+
+                    reactor.callFromThread(
+                        self._setStatus,
+                        _("Przygotowanie %d/%d: %s") % (idx, total, pack.get("satellite") or pack_name),
+                    )
+
+                    vpn_state = None
+                    vpn_warning = ""
+                    try:
+                        vpn_state = _pause_openvpn_for_download(
                             status_cb=lambda txt: reactor.callFromThread(self._setStatus, txt)
                         )
+                        last_vpn_state = vpn_state
+                        meta = _download_archive_with_retry(
+                            url,
+                            archive_path,
+                            progress_cb=make_progress_cb(pack, idx),
+                        )
+                        if vpn_state and vpn_state.get("should_resume"):
+                            try:
+                                _resume_openvpn_after_download(
+                                    vpn_state,
+                                    status_cb=lambda txt: reactor.callFromThread(self._setStatus, txt)
+                                )
+                            except Exception as e:
+                                vpn_warning = str(e)
+                            finally:
+                                vpn_state = None
+                                last_vpn_state = None
+
+                        reactor.callFromThread(
+                            self._setStatus,
+                            _("Rozpakowywanie %d/%d: %s") % (idx, total, pack.get("satellite") or pack_name),
+                        )
+                        copied = _extract_archive_to_target(
+                            archive_path,
+                            extract_dir,
+                            target_dir,
+                            content_type=meta.get("content_type") or "",
+                            final_url=meta.get("final_url") or "",
+                            archive_type=meta.get("archive_type") or "",
+                        )
+                        copied_total += copied
+                        result_lines.append("%s: %d PNG" % (pack.get("satellite") or pack_name, copied))
+                        if vpn_warning:
+                            warnings.append(vpn_warning)
                     except Exception as e:
-                        vpn_warning = str(e)
-                    finally:
-                        vpn_state = None
+                        if vpn_state and vpn_state.get("should_resume"):
+                            try:
+                                _resume_openvpn_after_download(vpn_state)
+                            except Exception as re_err:
+                                warnings.append(str(re_err))
+                        raise Exception(
+                            _("Blad dla paczki %s:\n%s") % (pack_name, str(e))
+                        )
 
+                _log("INSTALL queue success count=%d png=%d" % (total, copied_total))
                 reactor.callFromThread(
-                    self._setStatus,
-                    _("Pobrano %s — rozpakowywanie...") % _fmt_size(downloaded),
+                    self._queueSuccess,
+                    queue,
+                    copied_total,
+                    result_lines,
+                    warnings,
+                    target_dir,
                 )
-                reactor.callFromThread(
-                    self._afterDownload,
-                    name, archive_path, extract_dir, target_dir,
-                    content_type, final_url, archive_type, vpn_warning,
-                )
-
-            except urllib.error.HTTPError as e:
-                msg = "HTTP %d: %s\nURL: %s" % (e.code, e.reason, url)
-                if vpn_state and vpn_state.get("should_resume"):
-                    try:
-                        _resume_openvpn_after_download(vpn_state)
-                    except Exception as re:
-                        msg += "\n\nUWAGA: %s" % str(re)
-                reactor.callFromThread(self._downloadError, msg)
-            except urllib.error.URLError as e:
-                msg = str(e.reason)
-                if vpn_state and vpn_state.get("should_resume"):
-                    try:
-                        _resume_openvpn_after_download(vpn_state)
-                    except Exception as re:
-                        msg += "\n\nUWAGA: %s" % str(re)
-                reactor.callFromThread(self._downloadError, msg)
             except Exception as e:
-                msg = str(e)
-                if vpn_state and vpn_state.get("should_resume"):
+                if last_vpn_state and last_vpn_state.get("should_resume"):
                     try:
-                        _resume_openvpn_after_download(vpn_state)
-                    except Exception as re:
-                        msg += "\n\nUWAGA: %s" % str(re)
-                reactor.callFromThread(self._downloadError, msg)
+                        _resume_openvpn_after_download(last_vpn_state)
+                    except Exception:
+                        pass
+                _log("ERROR queue: %s" % str(e).replace("\n", " | "))
+                reactor.callFromThread(
+                    self._queueError,
+                    str(e),
+                    copied_total,
+                    result_lines,
+                    warnings,
+                )
 
         Thread(target=worker, daemon=True).start()
 
-    def _downloadError(self, msg):
-        _log("ERROR download: %s" % msg.replace("\n", " | "))
-        self._setStatus(_("Blad pobierania!"))
+    def _queueSuccess(self, queue, copied_total, result_lines, warnings, target_dir):
+        self._setStatus(_("Zainstalowano %d piconow") % copied_total)
+        msg = _("Zainstalowano %d paczek\nLacznie plikow PNG: %d\n\nKatalog: %s") % (
+            len(queue), copied_total, target_dir)
+        if result_lines:
+            msg += "\n\n" + "\n".join(result_lines[:15])
+            if len(result_lines) > 15:
+                msg += _("\n... i jeszcze %d pozycji") % (len(result_lines) - 15)
+        if warnings:
+            msg += _("\n\nUWAGA: OpenVPN nie zostal poprawnie uruchomiony ponownie.\n%s") % warnings[-1]
         self.session.open(
             MessageBox,
-            _("Blad pobierania piconow:\n%s\n\nLog: %s") % (msg, PLUGIN_LOG_FILE),
-            MessageBox.TYPE_ERROR, timeout=12,
+            msg,
+            MessageBox.TYPE_INFO, timeout=15,
         )
 
-    def _afterDownload(self, name, archive_path, extract_dir, target_dir,
-                       content_type="", final_url="", archive_type="", vpn_warning=""):
-        try:
-            if not os.path.exists(archive_path) or os.path.getsize(archive_path) == 0:
-                raise Exception("Plik archiwum jest pusty lub nie istnieje.")
-
-            archive_type = archive_type or _detect_archive_type(archive_path)
-            self._setStatus(_("Rozpakowywanie (%s)...") % (archive_type or "?"))
-            ensure_dir(extract_dir)
-
-            if archive_type == "zip":
-                with zipfile.ZipFile(archive_path, "r") as zf:
-                    zf.extractall(extract_dir)
-            elif archive_type == "tar.gz":
-                with tarfile.open(archive_path, "r:gz") as tf:
-                    tf.extractall(extract_dir)
-            elif archive_type == "7z":
-                bin_7z = _find_7za()
-                if not bin_7z:
-                    raise Exception(
-                        "Archiwum 7z — binarki 7za/7z nie znaleziono.\n"
-                        "Zainstaluj: opkg install 7zip"
-                    )
-                proc = subprocess.Popen(
-                    [bin_7z, "e", "-y", "-o" + extract_dir, archive_path, "*.png"],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                )
-                _out, _err = proc.communicate()
-                if proc.returncode != 0:
-                    out_txt = _out.decode("utf-8", "ignore").strip()
-                    err_txt = _err.decode("utf-8", "ignore").strip()
-                    raise Exception(
-                        "Blad %s (kod %d):\n%s" % (
-                            bin_7z,
-                            proc.returncode,
-                            (err_txt or out_txt or "brak wyjscia")[:400],
-                        )
-                    )
-            else:
-                head_hex, head_ascii = _head_info(archive_path)
-                is_html = head_ascii.lstrip().startswith(("<", "<!"))
-                raise Exception(
-                    "Nieznany format archiwum%s\n"
-                    "Rozmiar: %s  Content-Type: %s\n"
-                    "URL: ...%s\n"
-                    "Hex: %s\n"
-                    "Tekst: %s" % (
-                        " (HTML — blad serwera!)" if is_html else "",
-                        _fmt_size(os.path.getsize(archive_path)),
-                        content_type or "brak",
-                        (final_url or "")[-60:],
-                        head_hex,
-                        head_ascii[:48],
-                    )
-                )
-
-            self._setStatus(_("Kopiowanie plikow PNG..."))
-            copied = 0
-            for root, _dirs, files in os.walk(extract_dir):
-                for fname in files:
-                    if fname.lower().endswith(".png"):
-                        src = os.path.join(root, fname)
-                        dst = os.path.join(target_dir, fname)
-                        shutil.copy2(src, dst)
-                        copied += 1
-
-            try:
-                shutil.rmtree(extract_dir, ignore_errors=True)
-                os.remove(archive_path)
-            except Exception:
-                pass
-
-            if copied == 0:
-                raise Exception(
-                    "Nie znaleziono plikow *.png w archiwum.\n"
-                    "Paczka moze byc uszkodzona lub pusta."
-                )
-
-            _log("INSTALL success pack=%s copied=%d" % (name, copied))
-            self._setStatus(_("Zainstalowano %d piconow") % copied)
-            success_msg = _("Zainstalowano %d piconow\nz paczki: %s\n\nKatalog: %s") % (
-                copied, name, target_dir)
-            if vpn_warning:
-                success_msg += _("\n\nUWAGA: OpenVPN nie zostal poprawnie uruchomiony ponownie.\n%s") % vpn_warning
-            self.session.open(
-                MessageBox,
-                success_msg,
-                MessageBox.TYPE_INFO, timeout=12,
-            )
-
-        except Exception as e:
-            _log("ERROR install: %s" % str(e).replace("\n", " | "))
-            self._setStatus(_("Blad instalacji!"))
-            self.session.open(
-                MessageBox,
-                _("Blad instalacji piconow:\n%s") % str(e),
-                MessageBox.TYPE_ERROR, timeout=10,
-            )
+    def _queueError(self, msg, copied_total, result_lines, warnings):
+        self._setStatus(_("Blad instalacji!"))
+        extra = ""
+        if copied_total:
+            extra += _("\n\nZainstalowano przed bledem: %d PNG") % copied_total
+        if result_lines:
+            extra += "\n" + "\n".join(result_lines[:10])
+        if warnings:
+            extra += _("\n\nUWAGA: %s") % warnings[-1]
+        self.session.open(
+            MessageBox,
+            _("Blad instalacji piconow:\n%s%s\n\nLog: %s") % (msg, extra, PLUGIN_LOG_FILE),
+            MessageBox.TYPE_ERROR, timeout=15,
+        )
