@@ -60,7 +60,7 @@ except NameError:
     def _(txt):
         return txt
 
-PLUGIN_VERSION = "1.2.3"
+PLUGIN_VERSION = "1.2.4"
 PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
 PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
@@ -69,6 +69,7 @@ if PLUGIN_PATH not in sys.path:
 
 from picony import PiconyScreen
 from conf_backup import ConfBackupScreen
+from addons import AddonsScreen
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +429,7 @@ class ChannelListUpdateMenu(Screen):
             ("picon.png",   _("Picony"),                          "picony",       _("Pobieranie i instalacja piconów")),
             ("archive.png", _("Twórz archiwum Pluginu"),          "archive",      _("RaczQQ Updater")),
             ("archive.png", _("Twórz backup plików systemowych"), "conf_backup",  _("Archiwizacja plików systemowych")),
+            ("puzzle.png", _("Instalacja dodatków"),             "addons",       _("Przeglądaj i instaluj pliki *.ipk")),
         ]
 
         try:
@@ -1041,6 +1043,9 @@ class ChannelListUpdateMenu(Screen):
     def open_conf_backup(self):
         self.session.open(ConfBackupScreen)
 
+    def open_addons(self):
+        self.session.open(AddonsScreen)
+
     def KeyOk(self):
         sel = self["list"].getCurrent()
         if not sel:
@@ -1051,6 +1056,7 @@ class ChannelListUpdateMenu(Screen):
             "picony":      self.open_picony,
             "archive":     self.open_archive,
             "conf_backup": self.open_conf_backup,
+            "addons":      self.open_addons,
         }
         action = actions.get(sel[2])
         if action:
