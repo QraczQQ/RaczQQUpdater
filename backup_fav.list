@@ -1,1 +1,7 @@
 /etc/tuxbox/config
+/usr/lib/enigma2/python/Components/Converter/RaczQQAddons.py
+/usr/camscript
+/usr/softcams
+/usr/share/enigma2/display
+/usr/share/enigma2/Aglare-FHD-PLI
+/etc/tuxbox/enigma2
