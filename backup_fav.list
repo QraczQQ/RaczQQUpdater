@@ -4,4 +4,6 @@
 /usr/softcams
 /usr/share/enigma2/display
 /usr/share/enigma2/Aglare-FHD-PLI
-/etc/tuxbox/enigma2
+/etc/enigma2/jediplaylists/*
+/etc/enigma2/whitelist_streamrelay
+/etc/enigma2/oaweather_fav.dat
