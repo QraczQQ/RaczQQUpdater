@@ -29,13 +29,25 @@ def ensure_dir(path):
 
 class ConfRestoreListScreen(Screen):
     skin = '''
-    <screen name="ConfRestoreListScreen" position="center,center" size="900,560" title="Przywróć ustawienia">
-        <widget name="title" position="20,15" size="860,35" font="Regular;28" halign="center" />
-        <widget source="list" render="Listbox" position="20,70" size="860,400" scrollbarMode="showOnDemand">
+    <screen name="ConfRestoreListScreen" position="center,center" size="900,560" title="Przywróć ustawienia" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#4a9eff" />
+        <widget name="title" position="40,14" size="836,28" font="Regular;21" halign="left" valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+
+        <eLabel position="24,76" size="852,352" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="36,84" size="828,336"
+                scrollbarMode="showOnDemand" font="Regular;20" itemHeight="42"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="StringList" />
         </widget>
-        <widget name="status" position="20,485" size="860,30" font="Regular;22" halign="left" />
-        <widget name="hint" position="20,520" size="860,30" font="Regular;20" halign="center" />
+
+        <eLabel position="24,442" size="852,1"  backgroundColor="#232a34" />
+        <widget name="status" position="24,454" size="852,28" font="Regular;18" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
+        <widget name="hint"   position="24,490" size="852,26" font="Regular;17" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>'''
 
     def __init__(self, session, backup_dir):
@@ -137,19 +149,33 @@ class ConfRestoreListScreen(Screen):
 
 class ConfBackupScreen(Screen):
     skin = '''
-    <screen name="ConfBackupScreen" position="center,center" size="950,620" title="Backup plików systemowych">
-        <widget name="title" position="20,15" size="910,35" font="Regular;28" halign="center" />
+    <screen name="ConfBackupScreen" position="center,center" size="950,620" title="Backup plików systemowych" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="950,620" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="950,58"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,58"  size="950,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,17" size="4,24"    backgroundColor="#4a9eff" />
+        <widget name="title" position="40,15" size="886,28" font="Regular;22" halign="left" valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
 
-        <widget source="list" render="Listbox" position="20,70" size="910,390" scrollbarMode="showOnDemand">
+        <eLabel position="24,78" size="902,330" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="36,86" size="878,314"
+                scrollbarMode="showOnDemand" font="Regular;20" itemHeight="38"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="StringList" />
         </widget>
 
-        <widget name="status" position="20,470" size="910,30" font="Regular;22" halign="left" />
-        <widget name="target" position="20,505" size="910,30" font="Regular;22" halign="left" />
+        <eLabel position="24,424" size="902,1"  backgroundColor="#232a34" />
+        <widget name="status"  position="24,436" size="902,28" font="Regular;19" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#0e1116" />
+        <widget name="target"  position="24,470" size="902,24" font="Regular;17" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <widget name="favinfo" position="24,498" size="902,22" font="Regular;16" halign="center" valign="center" foregroundColor="#7c8898" backgroundColor="#0e1116" />
 
-        <widget name="key_yellow" position="20,575" size="220,30" font="Regular;22" halign="left" foregroundColor="#ffff00" />
-        <widget name="key_blue" position="260,575" size="300,30" font="Regular;22" halign="left" foregroundColor="#00aaff" />
-        <widget name="hint" position="580,575" size="350,30" font="Regular;20" halign="right" />
+        <eLabel position="24,556"  size="4,34" backgroundColor="#ffb020" />
+        <widget name="key_yellow" position="28,556"  size="260,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="300,556" size="4,34" backgroundColor="#4a9eff" />
+        <widget name="key_blue"   position="304,556" size="300,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <widget name="hint"       position="620,556" size="306,34" font="Regular;16" halign="center" valign="center" foregroundColor="#6b7684" backgroundColor="#0e1116" />
+
+        <eLabel position="0,604" size="950,16" backgroundColor="#151a21" zPosition="-5" />
     </screen>'''
 
     BACKUP_ITEMS = [
@@ -167,13 +193,13 @@ class ConfBackupScreen(Screen):
         Screen.__init__(self, session)
         self.session = session
 
-        self["title"] = Label(_("Twórz backup plików systemowych"))
+        self["title"] = Label(_("Backup plików systemowych"))
         self["list"] = List([])
-        self["status"] = Label(_("OK - utwórz backup"))
+        self["status"] = Label(_("OK - utwórz backup wybranej pozycji"))
         self["target"] = Label(_("Katalog backupu: %s") % BACKUP_DIR)
         self["favinfo"] = Label(_("Lista ulubionych ścieżek: %s") % FAV_LIST_FILE)
-        self["key_yellow"] = Label(_("Żółty - odśwież"))
-        self["key_blue"] = Label(_("Niebieski - przywróć ustawienia"))
+        self["key_yellow"] = Label(_("Odśwież"))
+        self["key_blue"] = Label(_("Przywróć ustawienia"))
         self["hint"] = Label(_("EXIT - powrót"))
 
         self["actions"] = ActionMap(
