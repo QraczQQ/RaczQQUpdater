@@ -637,52 +637,43 @@ def _extract_archive_to_target(archive_path, extract_dir, target_dir,
 
 class SatelliteSelectionScreen(Screen):
     skin = """
-    <screen name="SatelliteSelectionScreen" position="center,center" size="900,560"
-            title="Wybierz satelity">
+    <screen name="SatelliteSelectionScreen" position="center,center" size="900,560" title="Wybierz satelity" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#4a9eff" />
+        <widget name="summary" position="40,14" size="836,28" font="Regular;21" halign="left" valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
 
-        <eLabel position="0,0" size="900,4" backgroundColor="#d282ff" />
-
-        <widget name="key_red"    position="20,10"  size="160,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
-        <widget name="key_green"  position="200,10" size="200,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#2f8f46" />
-        <widget name="key_yellow" position="420,10" size="200,32" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
-        <widget name="key_blue"   position="640,10" size="200,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
-
-        <eLabel position="10,48" size="880,1" backgroundColor="#332244" />
-
-        <widget name="summary" position="10,54" size="880,28"
-                font="Regular;22" halign="center"
-                foregroundColor="#ffffff" backgroundColor="black" />
-
-        <widget source="list" render="Listbox"
-                position="10,90" size="880,330"
-                scrollbarMode="showOnDemand" transparent="1">
+        <eLabel position="24,76" size="852,300" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="34,84" size="832,284" scrollbarMode="showOnDemand"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="TemplatedMultiContent">
             {"template": [
-                MultiContentEntryText(pos=(8,5),  size=(870,28), font=0,
-                    color=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
-                MultiContentEntryText(pos=(8,35), size=(870,20), font=1,
-                    color=0x888888, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=1)
+                MultiContentEntryText(pos=(12,6),  size=(800,28), font=0, color=0xe8eaed, color_sel=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
+                MultiContentEntryText(pos=(12,34), size=(800,20), font=1, color=0x7c8898, color_sel=0x9fb4cc, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=1)
             ],
-            "fonts": [gFont("Regular",24), gFont("Regular",18)],
+            "fonts": [gFont("Regular",23), gFont("Regular",17)],
             "itemHeight": 58
             }
             </convert>
         </widget>
 
-        <eLabel position="10,428" size="880,2" backgroundColor="#d282ff" />
+        <eLabel position="24,392" size="852,1"  backgroundColor="#232a34" />
+        <widget name="count"  position="24,402" size="852,26" font="Regular;18" halign="center" valign="center" foregroundColor="#3ddc84" backgroundColor="#0e1116" />
+        <widget name="target" position="24,430" size="852,24" font="Regular;16" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <widget name="status" position="24,456" size="852,22" font="Regular;16" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
 
-        <widget name="count" position="10,438" size="880,26"
-                font="Regular;20" halign="center"
-                foregroundColor="#aaaaaa" backgroundColor="black" />
-        <widget name="target" position="10,468" size="880,24"
-                font="Regular;19" halign="center"
-                foregroundColor="#55aaff" backgroundColor="black" />
-        <widget name="status" position="10,498" size="880,24"
-                font="Regular;18" halign="center"
-                foregroundColor="#505050" backgroundColor="black" />
+        <eLabel position="24,498"  size="4,34" backgroundColor="#ff5252" />
+        <widget name="key_red"    position="28,498"  size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="240,498" size="4,34" backgroundColor="#3ddc84" />
+        <widget name="key_green"  position="244,498" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="456,498" size="4,34" backgroundColor="#ffb020" />
+        <widget name="key_yellow" position="460,498" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="672,498" size="4,34" backgroundColor="#4a9eff" />
+        <widget name="key_blue"   position="676,498" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
 
-        <eLabel position="0,556" size="900,4" backgroundColor="#d282ff" />
-
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>"""
 
     def __init__(self, session, pack_infos, kind, size, target_dir):
@@ -698,7 +689,7 @@ class SatelliteSelectionScreen(Screen):
         self["key_green"] = Label(_("Pobierz"))
         self["key_yellow"] = Label(_("Wszystkie"))
         self["key_blue"] = Label(_("Brak"))
-        self["summary"] = Label("")
+        self["summary"] = Label(_("Wybór satelit"))
         self["list"] = List([])
         self["count"] = Label("")
         self["target"] = Label("")
@@ -808,58 +799,55 @@ class SatelliteSelectionScreen(Screen):
 
 class PiconyScreen(Screen):
     skin = """
-    <screen name="PiconyScreen" position="center,center" size="900,560"
-            title="Menedzer Piconow — picon.cz">
+    <screen name="PiconyScreen" position="center,center" size="900,560" title="RaczQQ Picons" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#4a9eff" />
+        <widget name="summary" position="40,14" size="836,28" font="Regular;21" halign="left" valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
 
-        <eLabel position="0,0" size="900,4" backgroundColor="#d282ff" />
-
-        <widget name="key_red"    position="20,10"  size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
-        <widget name="key_green"  position="235,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#2f8f46" />
-        <widget name="key_yellow" position="450,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
-        <widget name="key_blue"   position="665,10" size="190,32" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
-
-        <eLabel position="10,48" size="880,1" backgroundColor="#332244" />
-
-        <widget source="list" render="Listbox"
-                position="10,54" size="880,250"
-                scrollbarMode="showOnDemand" transparent="1">
+        <!-- lewa kolumna: parametry -->
+        <eLabel position="24,76" size="500,254" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="34,84" size="480,238" scrollbarMode="showOnDemand"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="TemplatedMultiContent">
             {"template": [
-                MultiContentEntryText(pos=(8,5),  size=(870,28), font=0,
-                    color=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
-                MultiContentEntryText(pos=(8,35), size=(870,20), font=1,
-                    color=0x666666, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=1)
+                MultiContentEntryText(pos=(14,8),  size=(448,22), font=0, color=0x7c8898, color_sel=0x9fb4cc, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
+                MultiContentEntryText(pos=(14,30), size=(448,28), font=1, color=0xe8eaed, color_sel=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=1)
             ],
-            "fonts": [gFont("Regular",24), gFont("Regular",18)],
-            "itemHeight": 58
+            "fonts": [gFont("Regular",16), gFont("Regular",21)],
+            "itemHeight": 64
             }
             </convert>
         </widget>
 
-        <eLabel position="10,312" size="880,2" backgroundColor="#d282ff" />
+        <!-- prawa kolumna: stan -->
+        <eLabel position="540,76" size="336,254" backgroundColor="#12161c" zPosition="-3" />
+        <eLabel position="540,76" size="336,3"   backgroundColor="#4a9eff" />
+        <widget name="status" position="552,92"  size="312,56" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#12161c" />
+        <eLabel position="552,158" size="312,1"  backgroundColor="#232a34" />
+        <widget name="target" position="552,168" size="312,58" font="Regular;16" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#12161c" />
+        <eLabel position="552,232" size="312,1"  backgroundColor="#232a34" />
+        <widget name="count"  position="552,242" size="312,74" font="Regular;16" halign="center" valign="center" foregroundColor="#3ddc84" backgroundColor="#12161c" />
 
-        <widget name="summary" position="10,322" size="880,30"
-                font="Regular;22" halign="center"
-                foregroundColor="#ffffff" backgroundColor="black" />
-        <widget name="status" position="10,360" size="880,26"
-                font="Regular;20" halign="center"
-                foregroundColor="#aaaaaa" backgroundColor="black" />
-        <widget name="target" position="10,392" size="880,24"
-                font="Regular;19" halign="center"
-                foregroundColor="#55aaff" backgroundColor="black" />
-        <widget name="count"  position="10,422" size="880,22"
-                font="Regular;18" halign="center"
-                foregroundColor="#505050" backgroundColor="black" />
-        <widget name="hint"  position="10,452" size="880,56"
-                font="Regular;18" halign="center" valign="center"
-                foregroundColor="#bbbbbb" backgroundColor="black" />
+        <eLabel position="24,348" size="852,1"  backgroundColor="#232a34" />
+        <widget name="hint" position="24,360" size="852,56" font="Regular;17" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
 
-        <eLabel position="0,556" size="900,4" backgroundColor="#d282ff" />
+        <eLabel position="24,456"  size="4,34" backgroundColor="#ff5252" />
+        <widget name="key_red"    position="28,456"  size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="240,456" size="4,34" backgroundColor="#3ddc84" />
+        <widget name="key_green"  position="244,456" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="456,456" size="4,34" backgroundColor="#ffb020" />
+        <widget name="key_yellow" position="460,456" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="672,456" size="4,34" backgroundColor="#4a9eff" />
+        <widget name="key_blue"   position="676,456" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
 
+        <eLabel position="24,506" size="852,22" font="Regular;15" halign="center" valign="center" text="Lewo/Prawo - zmiana parametru   |   OK / Zielony - wybór satelit   |   EXIT - powrót" foregroundColor="#6b7684" backgroundColor="#0e1116" />
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>"""
-
     TARGET_DIRS = [
-        "/usr/share/enigma2/picons/",
+        "/usr/share/enigma2/picon/",
         "/picon/",
         "/media/hdd/picon/",
         "/media/usb/picon/",
@@ -880,16 +868,16 @@ class PiconyScreen(Screen):
         self._selected_size = ""
         self._selected_target = self.TARGET_DIRS[0]
 
-        self["key_red"] = Label(_("Wyczysc"))
+        self["key_red"] = Label(_("Wyczyść"))
         self["key_green"] = Label(_("Satelity"))
-        self["key_yellow"] = Label(_("Odswiez"))
+        self["key_yellow"] = Label(_("Odśwież"))
         self["key_blue"] = Label(_("Zamknij"))
         self["list"] = List([])
-        self["summary"] = Label("")
-        self["status"] = Label(_("Pobieranie listy piconow z GitHub..."))
+        self["summary"] = Label(_("Picony - konfiguracja pobierania"))
+        self["status"] = Label(_("Pobieranie listy piconów z GitHub..."))
         self["target"] = Label("")
         self["count"] = Label("")
-        self["hint"] = Label(_("Lewo/Prawo = zmiana  |  OK/Green = wybor satelit"))
+        self["hint"] = Label(_("Lewo/Prawo zmienia aktywny parametr. OK/Zielony otwiera wybór satelit."))
 
         self["actions"] = ActionMap(
             ["OkCancelActions", "ColorActions", "DirectionActions"],
@@ -918,7 +906,7 @@ class PiconyScreen(Screen):
             pass
 
     def _loadListAsync(self):
-        self._setStatus(_("Pobieranie listy piconow z GitHub..."))
+        self._setStatus(_("Pobieranie listy piconów z GitHub..."))
 
         def worker():
             log_path = os.path.join(PICON_TMP_DIR, "id_for_permalinks.log")
@@ -976,7 +964,12 @@ class PiconyScreen(Screen):
 
             reactor.callFromThread(self._applyFullList, packs)
 
-        Thread(target=worker, daemon=True).start()
+        thread = Thread(target=worker)
+        try:
+            thread.setDaemon(True)
+        except Exception:
+            pass
+        thread.start()
 
     def _applyFullList(self, packs):
         self._all_packs = packs
@@ -992,7 +985,7 @@ class PiconyScreen(Screen):
 
         self._refreshSizeChoices()
         self._rebuildMenuList()
-        self._setStatus(_("Wybierz rodzaj, rozmiar i katalog. Nastepnie wybierz satelity."))
+        self._setStatus(_("Panel gotowy. Wybierz satelity dla aktualnych ustawień."))
 
     def _refreshSizeChoices(self):
         sizes = []
@@ -1049,7 +1042,7 @@ class PiconyScreen(Screen):
                 except Exception:
                     pass
                 break
-        self["summary"].setText(_("Dopasowane paczki: %d   |   Dostepne satelity: %d") % (len(matched), sat_count))
+        self["summary"].setText(_("Dopasowane paczki: %d   |   Dostępne satelity: %d") % (len(matched), sat_count))
         self["target"].setText(_("Katalog docelowy: %s") % self._selected_target)
         self["count"].setText(_("Rodzaj: %s   |   Rozmiar: %s") % (self._selected_kind, self._selected_size))
 
@@ -1360,7 +1353,12 @@ class PiconyScreen(Screen):
                     warnings,
                 )
 
-        Thread(target=worker, daemon=True).start()
+        thread = Thread(target=worker)
+        try:
+            thread.setDaemon(True)
+        except Exception:
+            pass
+        thread.start()
 
     def _queueSuccess(self, queue, copied_total, result_lines, warnings, target_dir):
         self._setStatus(_("Zainstalowano %d piconow") % copied_total)
