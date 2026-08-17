@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import datetime
+import glob
 import io
 import json
 import os
@@ -13,6 +14,7 @@ import time
 import traceback
 import zipfile
 from threading import Thread
+from xml.etree import ElementTree
 
 from twisted.internet import reactor
 
@@ -52,7 +54,15 @@ except NameError:
     def _(txt):
         return txt
 
-PLUGIN_VERSION = "1.2.4"
+PLUGIN_VERSION = "1.2.5"
+
+# ---------------------------------------------------------------------------
+# Paleta interfejsu (dark modern)
+# ---------------------------------------------------------------------------
+UI_TEXT_MUTED = "#9aa4b2"   # zwykły status
+UI_TEXT_ALERT = "#ff5252"   # dostępna aktualizacja
+UI_TEXT_WARN  = "#ffb020"   # błąd / ostrzeżenie
+
 PLUGIN_PATH = resolveFilename(SCOPE_PLUGINS) + "Extensions/RaczQQUpdater/"
 PLUGIN_TMP_PATH = "/tmp/RaczQQUpdater/"
 
@@ -274,11 +284,22 @@ def _get_lists_from_repo_sync():
 
 class SatellitesUpdateProgress(Screen):
     skin = '''
-    <screen name="SatellitesUpdateProgress" position="center,center" size="700,190" title="Aktualizacja satellites.xml">
-        <widget name="title" position="20,15" size="660,30" font="Regular;26" halign="center" />
-        <widget name="status" position="20,60" size="660,30" font="Regular;22" halign="center" />
-        <widget name="progress" position="40,110" size="620,24" />
-        <widget name="percent" position="20,145" size="660,24" font="Regular;20" halign="center" />
+    <screen name="SatellitesUpdateProgress" position="center,center" size="720,210" title="Aktualizacja satellites.xml" backgroundColor="#0e1116">
+        <eLabel position="0,0"  size="720,210" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"  size="720,54"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,54" size="720,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,15" size="4,24"   backgroundColor="#4a9eff" />
+
+        <widget name="title"  position="40,12" size="656,30" font="Regular;23" halign="left"   valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+        <widget name="status" position="24,70" size="672,26" font="Regular;19" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
+
+        <eLabel position="24,110" size="672,16" backgroundColor="#1a2028" zPosition="-3" />
+        <widget name="progress" position="24,110" size="672,16" borderWidth="0" backgroundColor="#1a2028" foregroundColor="#4a9eff" />
+
+        <widget name="percent" position="24,138" size="672,24" font="Regular;19" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+
+        <eLabel position="24,176" size="672,1"  backgroundColor="#232a34" />
+        <eLabel position="24,182" size="672,22" font="Regular;15" halign="center" valign="center" text="Trwa aktualizacja - proszę czekać" foregroundColor="#6b7684" backgroundColor="#0e1116" />
     </screen>'''
 
     def __init__(self, session, plugin_screen):
@@ -359,66 +380,73 @@ class SatellitesUpdateProgress(Screen):
 # ---------------------------------------------------------------------------
 
 class ChannelListUpdateMenu(Screen):
-    skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="750,560" title="RaczQQ Updater">
+    skin = '''<screen name="ChannelListUpdateMenu" position="center,center" size="900,620" title="RaczQQ Updater" backgroundColor="#0e1116">
 
-    <!-- ═══ górny pasek akcentu ═══ -->
-    <eLabel position="0,0" size="750,4" backgroundColor="#d282ff" />
+    <!-- tło -->
+    <eLabel position="0,0" size="900,620" backgroundColor="#0e1116" zPosition="-10" />
 
-    <!-- ═══ lista menu ═══ -->
+    <!-- nagłówek -->
+    <eLabel position="0,0"   size="900,64" backgroundColor="#151a21" zPosition="-5" />
+    <eLabel position="0,64"  size="900,2"  backgroundColor="#4a9eff" />
+    <eLabel position="24,20" size="4,26"   backgroundColor="#4a9eff" />
+
+    <widget name="ai_title"    position="40,16"  size="430,32" font="Regular;26" halign="left"  valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+    <widget name="ai_subtitle" position="480,20" size="396,24" font="Regular;17" halign="right" valign="center" foregroundColor="#6b7684" backgroundColor="#151a21" />
+
+    <!-- pasek stanu systemu -->
+    <eLabel position="24,80"  size="3,30" backgroundColor="#ff5252" />
+    <widget name="cpu"     position="27,80"  size="159,30" font="Regular;17" halign="center" valign="center" foregroundColor="#c9d1d9" backgroundColor="#171c24" />
+    <eLabel position="196,80" size="3,30" backgroundColor="#3ddc84" />
+    <widget name="ram"     position="199,80" size="159,30" font="Regular;17" halign="center" valign="center" foregroundColor="#c9d1d9" backgroundColor="#171c24" />
+    <eLabel position="368,80" size="3,30" backgroundColor="#4a9eff" />
+    <widget name="iplocal" position="371,80" size="159,30" font="Regular;17" halign="center" valign="center" foregroundColor="#c9d1d9" backgroundColor="#171c24" />
+    <eLabel position="540,80" size="3,30" backgroundColor="#ffb020" />
+    <widget name="iptun"   position="543,80" size="159,30" font="Regular;17" halign="center" valign="center" foregroundColor="#c9d1d9" backgroundColor="#171c24" />
+    <eLabel position="712,80" size="3,30" backgroundColor="#a78bfa" />
+    <widget name="ipext"   position="715,80" size="161,30" font="Regular;17" halign="center" valign="center" foregroundColor="#c9d1d9" backgroundColor="#171c24" />
+
+    <!-- menu główne -->
+    <eLabel position="24,124" size="852,272" backgroundColor="#12161c" zPosition="-3" />
     <widget source="list" render="Listbox"
-            position="10,10" size="730,240"
-            scrollbarMode="showOnDemand" transparent="1">
+            position="24,124" size="852,272"
+            scrollbarMode="showOnDemand"
+            backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+            foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
         <convert type="TemplatedMultiContent">
         {"template": [
-            MultiContentEntryText(pos=(70,2),  size=(650,26), font=0, color=0xd282ff, flags=RT_HALIGN_LEFT, text=0),
-            MultiContentEntryPixmapAlphaBlend(pos=(10,6), size=(48,48), png=1, flags=BT_SCALE|BT_KEEP_ASPECT_RATIO),
-            MultiContentEntryText(pos=(70,30), size=(650,24), font=1, flags=RT_VALIGN_TOP|RT_HALIGN_LEFT, text=3)
+            MultiContentEntryPixmapAlphaBlend(pos=(18,8), size=(52,52), png=1, flags=BT_SCALE|BT_KEEP_ASPECT_RATIO),
+            MultiContentEntryText(pos=(86,8),  size=(736,30), font=0, color=0xe8eaed, color_sel=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
+            MultiContentEntryText(pos=(86,38), size=(736,24), font=1, color=0x7c8898, color_sel=0x9fb4cc, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=3)
         ],
-        "fonts": [gFont("Regular",24), gFont("Regular",20)],
-        "itemHeight": 60
+        "fonts": [gFont("Regular",24), gFont("Regular",19)],
+        "itemHeight": 68
         }
         </convert>
     </widget>
 
-    <!-- ─── separator ─── -->
-    <eLabel position="10,252" size="730,1" backgroundColor="#332244" />
+    <!-- status aktualizacji -->
+    <eLabel position="24,410" size="852,1" backgroundColor="#232a34" />
+    <widget name="update" position="24,420" size="852,26" font="Regular;19" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
 
-    <!-- ═══ przyciski kolorowe — równomiernie wycentrowane ═══ -->
-    <widget name="key_red"    position="32,257"  size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#c43b3b" />
-    <widget name="key_green"  position="209,257" size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3d9b4f" />
-    <widget name="key_yellow" position="386,257" size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#000000" backgroundColor="#d8c13f" />
-    <widget name="key_blue"   position="563,257" size="155,34" font="Regular;20" halign="center" valign="center" foregroundColor="#ffffff" backgroundColor="#3a78c9" />
+    <!-- przyciski kolorowe -->
+    <widget name="key_red_bar" position="24,458"  size="4,34"   backgroundColor="#ff5252" foregroundColor="#ff5252" />
+    <widget name="key_red"     position="28,458"  size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+    <eLabel                    position="240,458" size="4,34"   backgroundColor="#3ddc84" />
+    <widget name="key_green"   position="244,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+    <eLabel                    position="456,458" size="4,34"   backgroundColor="#ffb020" />
+    <widget name="key_yellow"  position="460,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+    <eLabel                    position="672,458" size="4,34"   backgroundColor="#4a9eff" />
+    <widget name="key_blue"    position="676,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
 
-    <!-- ─── separator ─── -->
-    <eLabel position="10,293" size="730,1" backgroundColor="#332244" />
+    <!-- README -->
+    <eLabel position="24,506" size="852,80" backgroundColor="#12161c" zPosition="-3" />
+    <eLabel position="24,506" size="3,80"   backgroundColor="#4a9eff" />
+    <widget name="readme_title" position="40,512" size="820,22" font="Regular;18" halign="left" valign="center" foregroundColor="#4a9eff" backgroundColor="#12161c" />
+    <widget name="readme"       position="40,536" size="820,46" font="Regular;16" halign="left" valign="top"    foregroundColor="#7c8898" backgroundColor="#12161c" />
 
-    <!-- ═══ status aktualizacji ═══ -->
-    <widget name="update" position="10,298" size="730,28" font="Regular;21" halign="center" backgroundColor="black" />
-
-    <!-- ─── separator ─── -->
-    <eLabel position="10,328" size="730,1" backgroundColor="#332244" />
-
-    <!-- ═══ sekcja README ═══ -->
-    <widget name="readme_title" position="10,332" size="730,22" font="Regular;21" halign="center" foregroundColor="#d282ff" backgroundColor="black" />
-    <widget name="readme"       position="20,357" size="710,118" font="Regular;18" halign="left" valign="top" foregroundColor="#777777" backgroundColor="black" />
-
-    <!-- ─── fioletowy separator akcentu ─── -->
-    <eLabel position="10,479" size="730,2" backgroundColor="#d282ff" />
-
-    <!-- ═══ pasek systemowy — CPU / RAM / IP wycentrowany ═══ -->
-    <widget name="cpu"     position="30,485"  size="165,26" font="Regular;19" halign="center" foregroundColor="#ff5555" backgroundColor="black" />
-    <widget name="ram"     position="205,485" size="165,26" font="Regular;19" halign="center" foregroundColor="#55ff55" backgroundColor="black" />
-    <widget name="iplocal" position="380,485" size="165,26" font="Regular;19" halign="center" foregroundColor="#55aaff" backgroundColor="black" />
-    <widget name="iptun"   position="555,485" size="165,26" font="Regular;19" halign="center" foregroundColor="#ffaa00" backgroundColor="black" />
-
-    <!-- ─── separator ─── -->
-    <eLabel position="10,514" size="730,1" backgroundColor="#332244" />
-
-    <!-- ═══ info / wersja — na samym dole ═══ -->
-    <widget name="info" position="10,518" size="730,24" font="Regular;18" halign="center" foregroundColor="#505050" backgroundColor="black" />
-
-    <!-- ═══ dolny pasek akcentu ═══ -->
-    <eLabel position="0,556" size="750,4" backgroundColor="#d282ff" />
+    <!-- stopka -->
+    <eLabel position="0,592" size="900,28" backgroundColor="#151a21" zPosition="-5" />
+    <widget name="info" position="24,592" size="852,28" font="Regular;16" halign="center" valign="center" foregroundColor="#6b7684" backgroundColor="#151a21" />
 
 </screen>'''
 
@@ -431,6 +459,9 @@ class ChannelListUpdateMenu(Screen):
         self.update_available = False
         self._sat_check_running = False
         self._sat_open_progress_timer = eTimer()
+        self._external_ip = "N/A"
+        self._external_ip_last_check = 0
+        self._external_ip_running = False
 
         # MENU_ITEMS defined here so _() is called at runtime, not import time.
         self.MENU_ITEMS = [
@@ -439,7 +470,7 @@ class ChannelListUpdateMenu(Screen):
             ("picon.png",   _("Picony"),                          "picony",       _("Pobieranie i instalacja piconów")),
             ("archive.png", _("Twórz archiwum Pluginu"),          "archive",      _("RaczQQ Updater")),
             ("archive.png", _("Twórz backup plików systemowych"), "conf_backup",  _("Archiwizacja plików systemowych")),
-            ("puzzle.png", _("Instalacja dodatków"),             "addons",       _("Przeglądaj i instaluj pliki *.ipk")),
+            ("puzzle.png",  _("Instalacja dodatków"),             "addons",       _("Przeglądaj i instaluj pliki *.ipk")),
         ]
 
         try:
@@ -451,10 +482,14 @@ class ChannelListUpdateMenu(Screen):
         self["ram"]          = Label("")
         self["iplocal"]      = Label("")
         self["iptun"]        = Label("")
+        self["ipext"]        = Label("")
+        self["ai_title"]     = Label("RaczQQ Updater")
+        self["ai_subtitle"]  = Label(_("Panel zarządzania dekoderem"))
         self["update"]       = Label(_("Sprawdzanie wersji online..."))
         self["list"]         = List(self.list)
         self["key_red"]      = Label(_("Aktualizacja"))
-        self["key_red"].hide()
+        self["key_red_bar"]  = Label("")
+        self._set_red_key_visible(False)
         self["key_green"]    = Label("-")
         self["key_yellow"]   = Label(_("Wyczyść TMP"))
         self["key_blue"]     = Label(_("Wyczyść RAM"))
@@ -464,7 +499,7 @@ class ChannelListUpdateMenu(Screen):
                 str(datetime.date.today()),
             )
         )
-        self["readme_title"] = Label("README / Informacje")
+        self["readme_title"] = Label(_("README / Informacje"))
         self["readme"]       = Label("")
 
         try:
@@ -495,6 +530,24 @@ class ChannelListUpdateMenu(Screen):
     # ------------------------------------------------------------------
     # Navigation helpers
     # ------------------------------------------------------------------
+
+    def _set_red_key_visible(self, visible):
+        """Pokaż/ukryj czerwony przycisk razem z jego kolorowym paskiem."""
+        for key in ("key_red", "key_red_bar"):
+            try:
+                widget = self[key]
+            except Exception:
+                continue
+            try:
+                widget.show() if visible else widget.hide()
+            except Exception:
+                pass
+
+    def _set_update_color(self, color):
+        try:
+            self["update"].instance.setForegroundColor(parseColor(color))
+        except Exception:
+            pass
 
     def _open_sat_progress_screen(self):
         try:
@@ -547,30 +600,39 @@ class ChannelListUpdateMenu(Screen):
     # Temp / memory cleanup
     # ------------------------------------------------------------------
 
-    def _cleanup_tmp_plugin_dir(self):
+    def _remove_path_quietly(self, path):
         try:
-            subprocess.run(
-                ["rm", "-rf", PLUGIN_TMP_PATH],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path, ignore_errors=True)
+            elif os.path.exists(path):
+                os.remove(path)
         except Exception as e:
-            print("[RaczQQ Updater] cleanup tmp error:", e)
+            print("[RaczQQ Updater] cleanup path error (%s): %s" % (path, e))
+
+    def _cleanup_tmp_plugin_dir(self):
+        self._remove_path_quietly(PLUGIN_TMP_PATH)
 
     def clear_ram_memory(self):
         try:
-            subprocess.run("sync; echo 3 > /proc/sys/vm/drop_caches", shell=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
+            subprocess.run(["sync"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with io.open("/proc/sys/vm/drop_caches", "w", encoding="ascii") as f:
+                f.write("3\n")
+        except Exception as e:
+            print("[RaczQQ Updater] clear RAM error:", e)
         self.session.open(MessageBox, _("Pamięć RAM została wyczyszczona."), MessageBox.TYPE_INFO, timeout=3)
 
     def clear_tmp_cache(self):
         try:
-            subprocess.run(
-                "rm -rf /tmp/*.ipk /tmp/*.zip /tmp/*.tar.gz /tmp/*.tgz /tmp/RaczQQUpdater/*",
-                shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+            patterns = [
+                "/tmp/*.ipk",
+                "/tmp/*.zip",
+                "/tmp/*.tar.gz",
+                "/tmp/*.tgz",
+                os.path.join(PLUGIN_TMP_PATH, "*"),
+            ]
+            for pattern in patterns:
+                for path in glob.glob(pattern):
+                    self._remove_path_quietly(path)
             self.session.open(MessageBox, _("Wyczyszczono pamięć podręczną /tmp."), MessageBox.TYPE_INFO, timeout=3)
         except Exception as e:
             self.session.open(MessageBox, _("Błąd: {}").format(e), MessageBox.TYPE_INFO, timeout=3)
@@ -652,6 +714,48 @@ class ChannelListUpdateMenu(Screen):
             pass
         return local_ip, tunneled_ip
 
+    def _is_valid_ipv4(self, value):
+        return bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', value or ""))
+
+    def _read_external_ip_sync(self):
+        commands = [
+            ["curl", "-4", "-s", "--max-time", "4", "https://icanhazip.com"],
+            ["wget", "-qO-", "-T", "4", "https://icanhazip.com"],
+        ]
+        for cmd in commands:
+            try:
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode != 0:
+                    continue
+                parts = result.stdout.decode("utf-8", "ignore").strip().split()
+                ip = parts[0] if parts else ""
+                if self._is_valid_ipv4(ip):
+                    return ip
+            except Exception:
+                pass
+        return "N/A"
+
+    def _apply_external_ip(self, ip):
+        self._external_ip = ip or "N/A"
+        self._external_ip_running = False
+        try:
+            self["ipext"].setText("WAN: %s" % self._external_ip)
+        except Exception:
+            pass
+
+    def _refresh_external_ip_async(self):
+        now = time.time()
+        if self._external_ip_running or (now - self._external_ip_last_check) < 60:
+            return
+        self._external_ip_last_check = now
+        self._external_ip_running = True
+
+        def worker():
+            ip = self._read_external_ip_sync()
+            reactor.callFromThread(self._apply_external_ip, ip)
+
+        Thread(target=worker).start()
+
     def _update_health(self):
         try:
             cpu = self._read_cpu_percent()
@@ -659,12 +763,13 @@ class ChannelListUpdateMenu(Screen):
             local_ip, tunneled_ip = self._get_ips_from_system()
             self["cpu"].setText("CPU: %s" % ("N/A" if cpu is None else "%d%%" % int(cpu)))
             self["ram"].setText("RAM: %s" % ("N/A" if mem is None else "%d%%" % int(mem)))
-            self["iplocal"].setText("IP: %s" % (local_ip or "N/A"))
-            self["iptun"].setText("IP VPN: %s" % (tunneled_ip or "N/A"))
+            self["iplocal"].setText("LAN: %s" % (local_ip or "N/A"))
+            self["iptun"].setText("VPN: %s" % (tunneled_ip or "N/A"))
+            self["ipext"].setText("WAN: %s" % (self._external_ip or "N/A"))
+            self._refresh_external_ip_async()
         except Exception:
             pass
         self._start_health_timer()
-
     # ------------------------------------------------------------------
     # Version helpers
     # ------------------------------------------------------------------
@@ -697,7 +802,8 @@ class ChannelListUpdateMenu(Screen):
 
     def check_updates(self):
         prepare_tmp_dir()
-        self["key_red"].hide()
+        self._set_red_key_visible(False)
+        self._set_update_color(UI_TEXT_MUTED)
         self["update"].setText(_("Sprawdzanie wersji online..."))
 
         url = "https://raw.githubusercontent.com/QraczQQ/RaczQQUpdater/main/plugin.version"
@@ -707,20 +813,21 @@ class ChannelListUpdateMenu(Screen):
             try:
                 online_version = self._read_version_file(tmp_version_path, "unknown")
                 self.update_available = False
-                self["key_red"].hide()
-                self["update"].instance.setForegroundColor(parseColor("#ffffff"))
+                self._set_red_key_visible(False)
+                self._set_update_color(UI_TEXT_MUTED)
                 status = _("Brak aktualizacji.")
 
                 if online_version != "unknown" and self._is_online_version_newer(PLUGIN_VERSION, online_version):
                     status = _("Aktualizacja jest dostępna.")
                     self.update_available = True
-                    self["key_red"].show()
-                    self["update"].instance.setForegroundColor(parseColor("#ff3333"))
+                    self._set_red_key_visible(True)
+                    self._set_update_color(UI_TEXT_ALERT)
 
                 self["update"].setText(_("Wersja online: {} | {}").format(online_version, status))
             except Exception as e:
                 print("[RaczQQ Updater] after_download error:", e)
-                self["key_red"].hide()
+                self._set_red_key_visible(False)
+                self._set_update_color(UI_TEXT_WARN)
                 self["update"].setText(_("Wersja online: błąd odczytu | Brak informacji o aktualizacji"))
 
         def run_check():
@@ -737,8 +844,8 @@ class ChannelListUpdateMenu(Screen):
         Thread(target=run_check).start()
 
     def errorUpdate(self, failure=None):
-        self["key_red"].hide()
-        self["update"].instance.setForegroundColor(parseColor("#ffaa00"))
+        self._set_red_key_visible(False)
+        self._set_update_color(UI_TEXT_WARN)
         self["update"].setText(_("Wersja online: błąd pobierania | Brak informacji o aktualizacji"))
 
     def keyRed(self):
@@ -826,17 +933,21 @@ class ChannelListUpdateMenu(Screen):
 
     def _extract_sat_version_from_xml(self, path):
         try:
-            result = subprocess.run(
-                'grep File "{}" | cut -d " " -f8 | cut -d "T" -f1'.format(path),
-                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            )
-            if result.returncode != 0:
-                return "unknown"
-            out = result.stdout.decode("utf-8", "ignore").strip()
-            return self._normalize_date_version(out)
+            root = ElementTree.parse(path).getroot()
+            for value in root.attrib.values():
+                match = re.search(r'(\d{4}-\d{2}-\d{2})', value or "")
+                if match:
+                    return self._normalize_date_version(match.group(1))
         except Exception:
-            return "unknown"
-
+            pass
+        try:
+            content = read_text_file(path)
+            match = re.search(r'File[^\n\r]*(\d{4}-\d{2}-\d{2})', content)
+            if match:
+                return self._normalize_date_version(match.group(1))
+        except Exception:
+            pass
+        return "unknown"
     def _sat_date_tuple(self, value):
         norm = self._normalize_date_version(value)
         if norm == "unknown":
@@ -1078,11 +1189,24 @@ class ChannelListUpdateMenu(Screen):
 
 class ManifestChannelsScreen(Screen):
     skin = '''
-    <screen name="ManifestChannelsScreen" position="center,center" size="900,560" title="Dostępne listy kanałów">
-        <widget source="list" render="Listbox" position="10,10" size="880,480" scrollbarMode="showOnDemand">
+    <screen name="ManifestChannelsScreen" position="center,center" size="900,560" title="Dostępne listy kanałów" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#4a9eff" />
+        <eLabel position="40,14" size="700,28"  font="Regular;22" halign="left" valign="center" text="Dostępne listy kanałów" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+
+        <eLabel position="24,76" size="852,396" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="36,84" size="828,380"
+                scrollbarMode="showOnDemand" font="Regular;21" itemHeight="44"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="StringList" />
         </widget>
-        <widget name="status" position="10,500" size="880,40" font="Regular;24" halign="left" valign="center" />
+
+        <eLabel position="24,486" size="852,1"  backgroundColor="#232a34" />
+        <widget name="status" position="24,498" size="852,30" font="Regular;18" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>'''
 
     def __init__(self, session, lists_menu):
@@ -1265,8 +1389,17 @@ class ManifestChannelsScreen(Screen):
 
 class ChannelsScreen(Screen):
     skin = '''
-    <screen name="ChannelsScreen" position="center,center" size="700,160" title="Pobieranie list">
-        <widget name="status" position="20,20" size="660,100" font="Regular;24" halign="center" valign="center" />
+    <screen name="ChannelsScreen" position="center,center" size="720,190" title="Pobieranie list" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="720,190" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="720,50"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,50"  size="720,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,14" size="4,22"    backgroundColor="#4a9eff" />
+        <eLabel position="40,12" size="560,26"  font="Regular;21" halign="left" valign="center" text="Pobieranie list kanałów" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+
+        <widget name="status" position="24,72" size="672,68" font="Regular;21" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#0e1116" />
+
+        <eLabel position="24,156" size="672,1"  backgroundColor="#232a34" />
+        <eLabel position="24,162" size="672,22" font="Regular;15" halign="center" valign="center" text="EXIT - powrót" foregroundColor="#6b7684" backgroundColor="#0e1116" />
     </screen>'''
 
     def __init__(self, session, args=None):
@@ -1320,24 +1453,43 @@ class ChannelsScreen(Screen):
 
 class ArchiveScreen(Screen):
     skin = """
-    <screen name="ArchiveScreen" position="center,center" size="900,520" title="Archiwum RaczQQ Updater">
-        <widget source="key_red" render="Label" position="20,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="red" transparent="1" />
-        <widget source="key_green" render="Label" position="240,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="green" transparent="1" />
-        <widget source="key_yellow" render="Label" position="460,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="yellow" transparent="1" />
-        <widget source="key_blue" render="Label" position="680,15" size="200,35" font="Regular;24" halign="center" valign="center" backgroundColor="blue" transparent="1" />
-        <widget source="info" render="Label" position="20,60" size="860,30" font="Regular;22" />
-        <widget source="list" render="Listbox" position="20,100" size="860,380" scrollbarMode="showOnDemand">
+    <screen name="ArchiveScreen" position="center,center" size="900,560" title="Archiwum RaczQQ Updater" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#4a9eff" />
+        <eLabel position="40,14" size="320,28"  font="Regular;22" halign="left" valign="center" text="Archiwum pluginu" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+        <widget source="info" render="Label" position="380,16" size="496,26" font="Regular;17" halign="right" valign="center" foregroundColor="#9aa4b2" backgroundColor="#151a21" />
+
+        <eLabel position="24,76" size="852,356" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="36,84" size="828,340" scrollbarMode="showOnDemand"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="TemplatedMultiContent">
                 {
                     "template": [
-                        MultiContentEntryText(pos=(10, 5), size=(520, 30), font=0, flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=0),
-                        MultiContentEntryText(pos=(10, 40), size=(830, 26), font=1, flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=1)
+                        MultiContentEntryText(pos=(10, 8),  size=(800, 30), font=0, color=0xe8eaed, color_sel=0xffffff, flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=0),
+                        MultiContentEntryText(pos=(10, 40), size=(800, 24), font=1, color=0x7c8898, color_sel=0x9fb4cc, flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=1)
                     ],
-                    "fonts": [gFont("Regular", 26), gFont("Regular", 22)],
-                    "itemHeight": 74
+                    "fonts": [gFont("Regular", 23), gFont("Regular", 18)],
+                    "itemHeight": 72
                 }
             </convert>
         </widget>
+
+        <eLabel position="24,446" size="852,1" backgroundColor="#232a34" />
+
+        <eLabel position="24,458"  size="4,34" backgroundColor="#ff5252" />
+        <widget source="key_red"    render="Label" position="28,458"  size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="240,458" size="4,34" backgroundColor="#3ddc84" />
+        <widget source="key_green"  render="Label" position="244,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="456,458" size="4,34" backgroundColor="#ffb020" />
+        <widget source="key_yellow" render="Label" position="460,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="672,458" size="4,34" backgroundColor="#4a9eff" />
+        <widget source="key_blue"   render="Label" position="676,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+
+        <eLabel position="24,506" size="852,22" font="Regular;15" halign="center" valign="center" text="OK / Zielony - przywróć   |   Czerwony - utwórz   |   Żółty - odśwież   |   EXIT - powrót" foregroundColor="#6b7684" backgroundColor="#0e1116" />
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>
     """
 
@@ -1346,8 +1498,8 @@ class ArchiveScreen(Screen):
     def __init__(self, session):
         Screen.__init__(self, session)
         self.session = session
-        self["key_red"]    = StaticText(_("Create archive"))
-        self["key_green"]  = StaticText(_("Restore backup"))
+        self["key_red"]    = StaticText(_("Utwórz archiwum"))
+        self["key_green"]  = StaticText(_("Przywróć"))
         self["key_yellow"] = StaticText(_("Odśwież"))
         self["key_blue"]   = StaticText(_("Zamknij"))
         self["info"]       = StaticText(_("Wybierz backup z listy"))
