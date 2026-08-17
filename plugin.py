@@ -54,7 +54,7 @@ except NameError:
     def _(txt):
         return txt
 
-PLUGIN_VERSION = "1.2.5"
+PLUGIN_VERSION = "1.2.6"
 
 # ---------------------------------------------------------------------------
 # Paleta interfejsu (dark modern)
@@ -72,6 +72,7 @@ if PLUGIN_PATH not in sys.path:
 from picony import PiconyScreen
 from conf_backup import ConfBackupScreen
 from addons import AddonsScreen
+from converter import ConverterScreen
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +472,7 @@ class ChannelListUpdateMenu(Screen):
             ("archive.png", _("Twórz archiwum Pluginu"),          "archive",      _("RaczQQ Updater")),
             ("archive.png", _("Twórz backup plików systemowych"), "conf_backup",  _("Archiwizacja plików systemowych")),
             ("puzzle.png",  _("Instalacja dodatków"),             "addons",       _("Przeglądaj i instaluj pliki *.ipk")),
+            ("convert.png", _("Konwerter oscam<->ncam"),          "converter",    _("Zamiana nazw i treści konfiguracji softcamu")),
         ]
 
         try:
@@ -1166,6 +1168,9 @@ class ChannelListUpdateMenu(Screen):
     def open_addons(self):
         self.session.open(AddonsScreen)
 
+    def open_converter(self):
+        self.session.open(ConverterScreen)
+
     def KeyOk(self):
         sel = self["list"].getCurrent()
         if not sel:
@@ -1177,6 +1182,7 @@ class ChannelListUpdateMenu(Screen):
             "archive":     self.open_archive,
             "conf_backup": self.open_conf_backup,
             "addons":      self.open_addons,
+            "converter":   self.open_converter,
         }
         action = actions.get(sel[2])
         if action:
