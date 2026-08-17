@@ -32,50 +32,42 @@ ADDONS_DIR = "/data/RaczQQUpdater/files"
 
 class AddonsScreen(Screen):
     skin = """
-    <screen name="AddonsScreen" position="center,center" size="900,560"
-            title="Instalacja dodatków">
+    <screen name="AddonsScreen" position="center,center" size="900,560" title="Instalacja dodatków" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#4a9eff" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#4a9eff" />
+        <eLabel position="40,14" size="300,28"  font="Regular;22" halign="left" valign="center" text="Instalacja dodatków" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+        <widget source="info" render="Label" position="360,16" size="516,26" font="Regular;16" halign="right" valign="center" foregroundColor="#9aa4b2" backgroundColor="#151a21" />
 
-        <widget source="key_red" render="Label"
-                position="20,15" size="190,35"
-                font="Regular;24" halign="center" valign="center"
-                backgroundColor="red" transparent="1" />
-        <widget source="key_green" render="Label"
-                position="230,15" size="190,35"
-                font="Regular;24" halign="center" valign="center"
-                backgroundColor="green" transparent="1" />
-        <widget source="key_yellow" render="Label"
-                position="440,15" size="190,35"
-                font="Regular;24" halign="center" valign="center"
-                backgroundColor="yellow" transparent="1" />
-        <widget source="key_blue" render="Label"
-                position="650,15" size="190,35"
-                font="Regular;24" halign="center" valign="center"
-                backgroundColor="blue" transparent="1" />
-
-        <widget source="info" render="Label"
-                position="20,60" size="860,28"
-                font="Regular;21" halign="left" valign="center" />
-
-        <widget source="list" render="Listbox"
-                position="20,100" size="860,400"
-                scrollbarMode="showOnDemand">
+        <eLabel position="24,76" size="852,352" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="36,84" size="828,336" scrollbarMode="showOnDemand"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="TemplatedMultiContent">
                 {
                     "template": [
-                        MultiContentEntryText(
-                            pos=(10, 10), size=(840, 34),
-                            font=0, flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER,
-                            text=0)
+                        MultiContentEntryText(pos=(14, 8), size=(800, 34), font=0, color=0xe8eaed, color_sel=0xffffff, flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=0)
                     ],
-                    "fonts": [gFont("Regular", 26)],
-                    "itemHeight": 52
+                    "fonts": [gFont("Regular", 22)],
+                    "itemHeight": 50
                 }
             </convert>
         </widget>
 
-        <widget source="status" render="Label"
-                position="20,512" size="860,30"
-                font="Regular;20" halign="center" valign="center" />
+        <eLabel position="24,442" size="852,1" backgroundColor="#232a34" />
+
+        <eLabel position="24,458"  size="4,34" backgroundColor="#ff5252" />
+        <widget source="key_red"    render="Label" position="28,458"  size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="240,458" size="4,34" backgroundColor="#3ddc84" />
+        <widget source="key_green"  render="Label" position="244,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="456,458" size="4,34" backgroundColor="#ffb020" />
+        <widget source="key_yellow" render="Label" position="460,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="672,458" size="4,34" backgroundColor="#4a9eff" />
+        <widget source="key_blue"   render="Label" position="676,458" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+
+        <widget source="status" render="Label" position="24,506" size="852,26" font="Regular;16" halign="center" valign="center" foregroundColor="#6b7684" backgroundColor="#0e1116" />
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>
     """
 
@@ -88,7 +80,7 @@ class AddonsScreen(Screen):
         self["key_yellow"] = StaticText(_("Odśwież"))
         self["key_blue"]   = StaticText(_("Zamknij"))
         self["info"]       = StaticText(_("Katalog: %s") % ADDONS_DIR)
-        self["status"]     = StaticText(_("OK / Zielony = instaluj  |  Czerwony = instaluj wszystkie  |  EXIT = zamknij"))
+        self["status"]     = StaticText(_("OK/Zielony - instaluj | Czerwony - wszystkie | Żółty - odśwież | EXIT - powrót"))
         self["list"]       = List([])
 
         self["actions"] = ActionMap(
