@@ -2,9 +2,10 @@
 """
 Konwerter konfiguracji OSCam <-> NCam.
 
-Kopiuje pliki z wybranego katalogu, zamieniajac przedrostek nazwy
-(oscam*.* <-> ncam*.*) i opcjonalnie takze wystapienia nazwy softcamu
-wewnatrz plikow tekstowych. Pliki zrodlowe pozostaja nietkniete.
+Kopiuje pliki z wybranego katalogu zrodlowego do wybranego katalogu
+docelowego, zamieniajac przedrostek nazwy (oscam*.* <-> ncam*.*)
+i opcjonalnie takze wystapienia nazwy softcamu wewnatrz plikow tekstowych.
+Pliki zrodlowe pozostaja nietkniete.
 """
 
 import io
@@ -43,6 +44,8 @@ except NameError:
 # ---------------------------------------------------------------------------
 
 CONFIG_ROOT = "/etc/tuxbox/config"
+KEYS_ROOT = "/usr/keys"
+TARGET_ROOTS = (CONFIG_ROOT, KEYS_ROOT)
 
 OSCAM = "oscam"
 NCAM = "ncam"
@@ -127,17 +130,84 @@ def count_matching_files(directory, src):
     return total
 
 
-def build_plan(directory, direction):
+def normalize_path(path):
+    """Znormalizuj sciezke do porownan i kontroli dozwolonych katalogow."""
+    return os.path.realpath(os.path.abspath(path))
+
+
+def is_allowed_target_directory(path):
+    """Czy *path* znajduje sie w jednym z dozwolonych drzew docelowych."""
+    try:
+        candidate = normalize_path(path)
+    except Exception:
+        return False
+
+    for root in TARGET_ROOTS:
+        root_path = normalize_path(root)
+        if candidate == root_path or candidate.startswith(root_path + os.sep):
+            return True
+    return False
+
+
+def scan_target_directories():
+    """
+    Przeszukaj /etc/tuxbox/config oraz /usr/keys i zwroc dostepne katalogi.
+    Dowiazania prowadzace poza dozwolone drzewa nie sa dodawane.
+    """
+    found = []
+    errors = []
+    seen = set()
+
+    def onerror(err):
+        try:
+            errors.append(str(err))
+        except Exception:
+            pass
+
+    for root in TARGET_ROOTS:
+        if not os.path.isdir(root):
+            errors.append(_("Brak katalogu: %s") % root)
+            continue
+
+        for current, dirnames, _filenames in os.walk(root, topdown=True, onerror=onerror, followlinks=False):
+            # Nie pokazuj dowiazan katalogowych wychodzacych poza dozwolone drzewa.
+            dirnames[:] = [
+                name for name in dirnames
+                if is_allowed_target_directory(os.path.join(current, name))
+            ]
+
+            if not is_allowed_target_directory(current):
+                continue
+            normalized = normalize_path(current)
+            if normalized not in seen:
+                seen.add(normalized)
+                found.append(current)
+
+    found.sort(key=lambda value: value.lower())
+    return found, errors
+
+
+def build_plan(directory, direction, target_directory=None):
     """
     Zbuduj liste operacji do wykonania.
+    *directory* jest katalogiem zrodlowym, a *target_directory* docelowym.
+    Brak *target_directory* zachowuje zgodnosc ze starszym wywolaniem i
+    zapisuje wynik w katalogu zrodlowym.
     Zwraca (plan, error) gdzie plan to lista slownikow.
     """
     src, dst = DIRECTIONS.get(direction, (OSCAM, NCAM))
+    explicit_target = target_directory is not None
+    target_directory = target_directory or directory
     plan = []
     try:
         names = sorted(os.listdir(directory))
     except Exception as e:
         return plan, str(e)
+
+    if not os.path.isdir(target_directory):
+        return plan, _("Katalog docelowy nie istnieje: %s") % target_directory
+    if explicit_target and not is_allowed_target_directory(target_directory):
+        return plan, _("Niedozwolony katalog docelowy: %s") % target_directory
 
     for name in names:
         new_name = convert_filename(name, src, dst)
@@ -145,7 +215,7 @@ def build_plan(directory, direction):
             continue
 
         full = os.path.join(directory, name)
-        target = os.path.join(directory, new_name)
+        target = os.path.join(target_directory, new_name)
         item = {
             "name": name,
             "new_name": new_name,
@@ -253,7 +323,8 @@ class ConverterScreen(Screen):
 
         <eLabel position="24,256" size="772,1"  backgroundColor="#232a34" />
         <widget name="status" position="24,266" size="772,26" font="Regular;18" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
-        <widget name="source" position="24,294" size="772,24" font="Regular;16" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <widget name="source" position="24,292" size="772,22" font="Regular;15" halign="center" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <widget name="target" position="24,316" size="772,22" font="Regular;15" halign="center" valign="center" foregroundColor="#3ddc84" backgroundColor="#0e1116" />
 
         <eLabel position="24,344"  size="4,34" backgroundColor="#ff5252" />
         <widget name="key_red"    position="28,344"  size="180,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
@@ -264,7 +335,7 @@ class ConverterScreen(Screen):
         <eLabel position="612,344" size="4,34" backgroundColor="#4a9eff" />
         <widget name="key_blue"   position="616,344" size="180,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
 
-        <eLabel position="24,392" size="772,22" font="Regular;15" halign="center" valign="center" text="OK / Zielony - wybierz katalog i przejdź dalej   |   EXIT - powrót" foregroundColor="#6b7684" backgroundColor="#0e1116" />
+        <eLabel position="24,392" size="772,22" font="Regular;15" halign="center" valign="center" text="Czerwony - cel   |   OK / Zielony - źródło i dalej   |   EXIT - powrót" foregroundColor="#6b7684" backgroundColor="#0e1116" />
         <eLabel position="0,432" size="820,8" backgroundColor="#151a21" zPosition="-5" />
     </screen>
     """
@@ -274,12 +345,14 @@ class ConverterScreen(Screen):
         self.session = session
         self.replace_content = True
         self.last_dir = CONFIG_ROOT
+        self.target_dir = CONFIG_ROOT if os.path.isdir(CONFIG_ROOT) else KEYS_ROOT
 
         self["list"] = List([])
         self["mode"] = Label("")
         self["status"] = Label(_("Wybierz kierunek konwersji"))
-        self["source"] = Label(_("Katalog startowy: %s") % CONFIG_ROOT)
-        self["key_red"] = Label(_("Katalog: %s") % os.path.basename(CONFIG_ROOT))
+        self["source"] = Label(_("Źródło startowe: %s") % CONFIG_ROOT)
+        self["target"] = Label(_("Katalog docelowy: %s") % self.target_dir)
+        self["key_red"] = Label(_("Katalog docelowy"))
         self["key_green"] = Label(_("Dalej"))
         self["key_yellow"] = Label(_("Treść plików"))
         self["key_blue"] = Label(_("Zamknij"))
@@ -291,7 +364,7 @@ class ConverterScreen(Screen):
                 "green": self.keyOk,
                 "cancel": self.close,
                 "back": self.close,
-                "red": self.resetStartDir,
+                "red": self.chooseTargetDir,
                 "yellow": self.toggleContent,
                 "blue": self.close,
                 "up": self.keyUp,
@@ -324,16 +397,31 @@ class ConverterScreen(Screen):
             _("Podmiana treści: TAK") if self.replace_content
             else _("Podmiana treści: NIE")
         )
-        self["source"].setText(_("Katalog startowy: %s") % self.last_dir)
+        self["source"].setText(_("Źródło startowe: %s") % self.last_dir)
+        self["target"].setText(_("Katalog docelowy: %s") % self.target_dir)
 
     def toggleContent(self):
         self.replace_content = not self.replace_content
         self._refreshMode()
 
-    def resetStartDir(self):
-        self.last_dir = CONFIG_ROOT
+    def chooseTargetDir(self):
+        self["status"].setText(_("Wybierz katalog docelowy"))
+        self.session.openWithCallback(
+            self._afterTargetChosen,
+            ConverterTargetScreen,
+            self.target_dir,
+        )
+
+    def _afterTargetChosen(self, path):
+        if not path:
+            self["status"].setText(_("Anulowano wybór katalogu docelowego"))
+            return
+        if not os.path.isdir(path) or not is_allowed_target_directory(path):
+            self["status"].setText(_("Niedozwolony katalog docelowy"))
+            return
+        self.target_dir = path
         self._refreshMode()
-        self["status"].setText(_("Katalog startowy przywrócony"))
+        self["status"].setText(_("Ustawiono katalog docelowy"))
 
     def keyUp(self):
         try:
@@ -375,6 +463,7 @@ class ConverterScreen(Screen):
             path,
             direction,
             self.replace_content,
+            self.target_dir,
         )
 
     def _afterConversion(self, *args):
@@ -544,8 +633,176 @@ class ConverterBrowserScreen(Screen):
         self.close(None)
 
 
+
 # ---------------------------------------------------------------------------
-# Ekran 3: plan konwersji + wykonanie
+# Ekran 3: wybor katalogu docelowego
+# ---------------------------------------------------------------------------
+
+class ConverterTargetScreen(Screen):
+    skin = """
+    <screen name="ConverterTargetScreen" position="center,center" size="900,560" title="Wybierz katalog docelowy" backgroundColor="#0e1116">
+        <eLabel position="0,0"   size="900,560" backgroundColor="#0e1116" zPosition="-10" />
+        <eLabel position="0,0"   size="900,56"  backgroundColor="#151a21" zPosition="-5" />
+        <eLabel position="0,56"  size="900,2"   backgroundColor="#3ddc84" />
+        <eLabel position="24,16" size="4,24"    backgroundColor="#3ddc84" />
+        <eLabel position="40,14" size="836,28" font="Regular;20" halign="left" valign="center" text="Katalog docelowy: /etc/tuxbox/config lub /usr/keys" foregroundColor="#e8eaed" backgroundColor="#151a21" />
+
+        <eLabel position="24,76" size="852,336" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="34,84" size="832,320" scrollbarMode="showOnDemand"
+                backgroundColor="#12161c" backgroundColorSelected="#1d2735"
+                foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
+            <convert type="TemplatedMultiContent">
+            {"template": [
+                MultiContentEntryText(pos=(14,0),  size=(620,44), font=0, color=0xe8eaed, color_sel=0xffffff, flags=RT_HALIGN_LEFT|RT_VALIGN_CENTER, text=0),
+                MultiContentEntryText(pos=(640,0), size=(160,44), font=1, color=0x3ddc84, color_sel=0x3ddc84, flags=RT_HALIGN_RIGHT|RT_VALIGN_CENTER, text=1)
+            ],
+            "fonts": [gFont("Regular",19), gFont("Regular",15)],
+            "itemHeight": 44
+            }
+            </convert>
+        </widget>
+
+        <eLabel position="24,424" size="852,1"  backgroundColor="#232a34" />
+        <widget name="status" position="24,434" size="852,26" font="Regular;17" halign="center" valign="center" foregroundColor="#9aa4b2" backgroundColor="#0e1116" />
+
+        <eLabel position="24,476"  size="4,34" backgroundColor="#ff5252" />
+        <widget name="key_red"    position="28,476"  size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="240,476" size="4,34" backgroundColor="#3ddc84" />
+        <widget name="key_green"  position="244,476" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="456,476" size="4,34" backgroundColor="#ffb020" />
+        <widget name="key_yellow" position="460,476" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+        <eLabel position="672,476" size="4,34" backgroundColor="#4a9eff" />
+        <widget name="key_blue"   position="676,476" size="200,34" font="Regular;18" halign="center" valign="center" foregroundColor="#e8eaed" backgroundColor="#1a2028" />
+
+        <eLabel position="24,518" size="852,22" font="Regular;15" halign="center" valign="center" text="OK / Zielony - wybierz zaznaczony katalog   |   Żółty - przeskanuj ponownie   |   EXIT - anuluj" foregroundColor="#6b7684" backgroundColor="#0e1116" />
+        <eLabel position="0,552" size="900,8" backgroundColor="#151a21" zPosition="-5" />
+    </screen>
+    """
+
+    def __init__(self, session, selected_dir=CONFIG_ROOT):
+        Screen.__init__(self, session)
+        self.session = session
+        self.selected_dir = selected_dir
+        self.scanning = False
+        self.scanned = False
+
+        self["list"] = List([])
+        self["status"] = Label(_("Przeszukiwanie katalogów..."))
+        self["key_red"] = Label(_("Anuluj"))
+        self["key_green"] = Label(_("Wybierz"))
+        self["key_yellow"] = Label(_("Odśwież"))
+        self["key_blue"] = Label(_("Anuluj"))
+
+        self["actions"] = ActionMap(
+            ["OkCancelActions", "ColorActions", "DirectionActions"],
+            {
+                "ok": self.selectCurrent,
+                "green": self.selectCurrent,
+                "cancel": self.keyCancel,
+                "back": self.keyCancel,
+                "red": self.keyCancel,
+                "yellow": self.refresh,
+                "blue": self.keyCancel,
+                "up": self.keyUp,
+                "down": self.keyDown,
+            },
+            -1,
+        )
+
+        self.onShown.append(self._startScan)
+
+    def _startScan(self):
+        # Skanowanie moze dotknac wolniejszego nosnika, wiec nie blokujemy GUI.
+        if self.scanning or self.scanned:
+            return
+        self.scanning = True
+        Thread(target=self._scanWorker).start()
+
+    def _scanWorker(self):
+        try:
+            directories, errors = scan_target_directories()
+            reactor.callFromThread(self._applyScan, directories, errors)
+        except Exception as e:
+            traceback.print_exc()
+            reactor.callFromThread(self._applyScan, [], [str(e)])
+
+    def _applyScan(self, directories, errors):
+        self.scanning = False
+        self.scanned = True
+        entries = []
+        selected_index = 0
+        selected_normalized = normalize_path(self.selected_dir)
+        config_root = normalize_path(CONFIG_ROOT)
+        for index, path in enumerate(directories):
+            normalized = normalize_path(path)
+            root_name = (
+                CONFIG_ROOT
+                if normalized == config_root or normalized.startswith(config_root + os.sep)
+                else KEYS_ROOT
+            )
+            entries.append((path, os.path.basename(root_name) or root_name, path))
+            if normalize_path(path) == selected_normalized:
+                selected_index = index
+
+        if entries:
+            self["list"].setList(entries)
+            try:
+                self["list"].setIndex(selected_index)
+            except Exception:
+                pass
+            if errors:
+                self["status"].setText(
+                    _("Znaleziono %d katalogów (część lokalizacji niedostępna)") % len(entries)
+                )
+            else:
+                self["status"].setText(
+                    _("Znaleziono %d katalogów w dozwolonych lokalizacjach") % len(entries)
+                )
+        else:
+            self["list"].setList([(
+                _("Brak dostępnych katalogów"), "", None,
+            )])
+            if errors:
+                self["status"].setText(_("Nie znaleziono dostępnego katalogu docelowego"))
+            else:
+                self["status"].setText(_("Brak katalogów do wyboru"))
+
+    def refresh(self):
+        if self.scanning:
+            return
+        self.scanned = False
+        self["list"].setList([])
+        self["status"].setText(_("Przeszukiwanie katalogów..."))
+        self._startScan()
+
+    def keyUp(self):
+        try:
+            self["list"].selectPrevious()
+        except Exception:
+            pass
+
+    def keyDown(self):
+        try:
+            self["list"].selectNext()
+        except Exception:
+            pass
+
+    def selectCurrent(self):
+        sel = self["list"].getCurrent()
+        if not sel or not sel[2]:
+            return
+        path = sel[2]
+        if os.path.isdir(path) and is_allowed_target_directory(path):
+            self.close(path)
+            return
+        self["status"].setText(_("Ten katalog nie jest dostępny lub jest niedozwolony"))
+
+    def keyCancel(self):
+        self.close(None)
+
+
+# ---------------------------------------------------------------------------
+# Ekran 4: plan konwersji + wykonanie
 # ---------------------------------------------------------------------------
 
 class ConverterPlanScreen(Screen):
@@ -558,10 +815,11 @@ class ConverterPlanScreen(Screen):
         <widget name="title" position="40,15" size="520,28" font="Regular;22" halign="left"  valign="center" foregroundColor="#e8eaed" backgroundColor="#151a21" />
         <widget name="mode"  position="570,17" size="306,24" font="Regular;16" halign="right" valign="center" foregroundColor="#9aa4b2" backgroundColor="#151a21" />
 
-        <widget name="source" position="24,72" size="852,24" font="Regular;16" halign="left" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <widget name="source" position="24,68" size="852,22" font="Regular;15" halign="left" valign="center" foregroundColor="#4a9eff" backgroundColor="#0e1116" />
+        <widget name="target" position="24,92" size="852,22" font="Regular;15" halign="left" valign="center" foregroundColor="#3ddc84" backgroundColor="#0e1116" />
 
-        <eLabel position="24,104" size="852,290" backgroundColor="#12161c" zPosition="-3" />
-        <widget source="list" render="Listbox" position="34,112" size="832,274" scrollbarMode="showOnDemand"
+        <eLabel position="24,122" size="852,272" backgroundColor="#12161c" zPosition="-3" />
+        <widget source="list" render="Listbox" position="34,130" size="832,256" scrollbarMode="showOnDemand"
                 backgroundColor="#12161c" backgroundColorSelected="#1d2735"
                 foregroundColor="#e8eaed" foregroundColorSelected="#ffffff">
             <convert type="TemplatedMultiContent">
@@ -599,10 +857,11 @@ class ConverterPlanScreen(Screen):
     </screen>
     """
 
-    def __init__(self, session, directory, direction, replace_content=True):
+    def __init__(self, session, directory, direction, replace_content=True, target_directory=None):
         Screen.__init__(self, session)
         self.session = session
         self.directory = directory
+        self.target_directory = target_directory or directory
         self.direction = direction
         self.replace_content = replace_content
         self.overwrite = False
@@ -613,7 +872,8 @@ class ConverterPlanScreen(Screen):
         self["list"] = List([])
         self["title"] = Label(_("Konwersja: %s") % direction_label(direction))
         self["mode"] = Label("")
-        self["source"] = Label(_("Katalog: %s") % directory)
+        self["source"] = Label(_("Źródło: %s") % directory)
+        self["target"] = Label(_("Cel: %s") % self.target_directory)
         self["progress"] = ProgressBar()
         self["counters"] = Label("")
         self["status"] = Label(_("Analiza katalogu..."))
@@ -654,7 +914,7 @@ class ConverterPlanScreen(Screen):
 
     def _analysisWorker(self):
         try:
-            plan, error = build_plan(self.directory, self.direction)
+            plan, error = build_plan(self.directory, self.direction, self.target_directory)
             reactor.callFromThread(self._applyPlan, plan, error)
         except Exception as e:
             traceback.print_exc()
@@ -771,9 +1031,10 @@ class ConverterPlanScreen(Screen):
             return
 
         stats = plan_stats(self.plan)
-        msg = _("Skonwertować %d plików?\n\nKatalog: %s\nKierunek: %s\nPodmiana treści: %s") % (
+        msg = _("Skonwertować %d plików?\n\nŹródło: %s\nCel: %s\nKierunek: %s\nPodmiana treści: %s") % (
             len(pending),
             self.directory,
+            self.target_directory,
             direction_label(self.direction),
             _("tak") if self.replace_content else _("nie"),
         )
@@ -835,7 +1096,10 @@ class ConverterPlanScreen(Screen):
                 _("Zakończono z błędami: %d gotowych, %d błędów") % (s["done"], s["error"])
             )
         else:
-            self["status"].setText(_("Zakończono - skonwertowano %d plików") % s["done"])
+            self["status"].setText(
+                _("Zakończono - skonwertowano %d plików do %s")
+                % (s["done"], self.target_directory)
+            )
 
     def keyClose(self):
         if self.running:
