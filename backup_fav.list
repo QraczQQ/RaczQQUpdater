@@ -1,9 +1,12 @@
 /etc/tuxbox/config
 /usr/lib/enigma2/python/Components/Converter/RaczQQAddons.py
+/usr/lib/enigma2/python/Components/Converter/CaidInfo2.py
+/usr/lib/enigma2/python/Components/Converter/DreamNextGenInfo_v2.py
+/usr/lib/enigma2/python/Components/Converter/SegmentedProgress.py
 /usr/camscript
 /usr/softcams
-/usr/share/enigma2/display
-/usr/share/enigma2/Aglare-FHD-PLI
-/etc/enigma2/jediplaylists
+/picon
+/usr/share/enigma2/Default-FHD-DreamNG
 /etc/enigma2/whitelist_streamrelay
-/etc/enigma2/oaweather_fav.dat
+/etc/enigma2/ci0.xml
+/etc/enigma2/oaweatheriet5_fav.json
