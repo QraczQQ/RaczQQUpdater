@@ -1,7 +1,7 @@
 #!/bin/bash
 
 KATALOG="/usr/lib/enigma2/python/Plugins/Extensions/RaczQQUpdater"
-SCIEZKA_TEMP="/data/RaczQQUpdater/backup/"
+SCIEZKA_TEMP="${1:-/data/RaczQQUpdater/backup}"
 VER_FILE="$KATALOG/plugin.version"
 
 if [ -r "$VER_FILE" ]; then
@@ -12,7 +12,7 @@ else
 fi
 
 NAZWA_ARCHIWUM="raczqq_updater$(date +%Y%m%d)_ver_$VER.tar.gz"
-SCIEZKA_ARCHIWUM="${SCIEZKA_TEMP}${NAZWA_ARCHIWUM}"
+SCIEZKA_ARCHIWUM="${SCIEZKA_TEMP%/}/${NAZWA_ARCHIWUM}"
 
 echo "Przygotowywanie archiwum"
 

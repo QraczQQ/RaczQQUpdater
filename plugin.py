@@ -31,6 +31,7 @@ from enigma import (
 )
 
 from Screens.Console import Console
+from Screens.ChoiceBox import ChoiceBox
 from Screens.InfoBar import InfoBar
 from Screens.MessageBox import MessageBox
 from Screens.Screen import Screen
@@ -54,7 +55,7 @@ except NameError:
     def _(txt):
         return txt
 
-PLUGIN_VERSION = "1.2.6"
+PLUGIN_VERSION = "1.2.7"
 
 # ---------------------------------------------------------------------------
 # Paleta interfejsu (dark modern)
@@ -70,7 +71,17 @@ if PLUGIN_PATH not in sys.path:
     sys.path.append(PLUGIN_PATH)
 
 from picony import PiconyScreen
-from conf_backup import ConfBackupScreen
+from conf_backup import (
+    ConfBackupScreen,
+    STORAGE_LOCATIONS,
+    get_backup_search_dirs,
+    get_device_model,
+    get_plugin_backup_dir,
+    get_storage_location,
+    is_storage_location_available,
+    is_storage_location_configured,
+    save_storage_location,
+)
 from addons import AddonsScreen
 from converter import ConverterScreen
 
@@ -463,6 +474,7 @@ class ChannelListUpdateMenu(Screen):
         self._external_ip = "N/A"
         self._external_ip_last_check = 0
         self._external_ip_running = False
+        self._storage_prompt_shown = False
 
         # MENU_ITEMS defined here so _() is called at runtime, not import time.
         self.MENU_ITEMS = [
@@ -486,21 +498,17 @@ class ChannelListUpdateMenu(Screen):
         self["iptun"]        = Label("")
         self["ipext"]        = Label("")
         self["ai_title"]     = Label("RaczQQ Updater")
-        self["ai_subtitle"]  = Label(_("Panel zarządzania dekoderem"))
+        self["ai_subtitle"]  = Label(_("MODEL: %s") % get_device_model())
         self["update"]       = Label(_("Sprawdzanie wersji online..."))
         self["list"]         = List(self.list)
         self["key_red"]      = Label(_("Aktualizacja"))
         self["key_red_bar"]  = Label("")
         self._set_red_key_visible(False)
-        self["key_green"]    = Label("-")
+        self["key_green"]    = Label(_("Backup: %s") % get_storage_location())
         self["key_yellow"]   = Label(_("Wyczyść TMP"))
         self["key_blue"]     = Label(_("Wyczyść RAM"))
-        self["info"]         = Label(
-            "Updater by RaczQQ | Wersja: {} | Data: {} | Python: Py3".format(
-                PLUGIN_VERSION,
-                str(datetime.date.today()),
-            )
-        )
+        self["info"]         = Label("")
+        self._refresh_main_info()
         self["readme_title"] = Label(_("README / Informacje"))
         self["readme"]       = Label("")
 
@@ -513,6 +521,7 @@ class ChannelListUpdateMenu(Screen):
             ["WizardActions", "ColorActions"],
             {
                 "red":    self.keyRed,
+                "green":  self.choose_storage_location,
                 "yellow": self.clear_tmp_cache,
                 "blue":   self.clear_ram_memory,
                 "ok":     self.KeyOk,
@@ -521,6 +530,7 @@ class ChannelListUpdateMenu(Screen):
         )
 
         self.onShown.append(self._start_health_timer)
+        self.onShown.append(self._offer_initial_storage_choice)
         self.onClose.append(self._stop_health_timer)
         self.onClose.append(self._cleanup_tmp_plugin_dir)
 
@@ -528,6 +538,70 @@ class ChannelListUpdateMenu(Screen):
         self._refresh_readme()
         self.check_updates()
         self._update_health()
+
+    def _refresh_main_info(self):
+        self["info"].setText(
+            "Updater by RaczQQ | Wersja: {} | Backup: {} | Data: {} | Python: Py3".format(
+                PLUGIN_VERSION,
+                get_storage_location(),
+                str(datetime.date.today()),
+            )
+        )
+        self["key_green"].setText(_("Backup: %s") % get_storage_location())
+
+    def _offer_initial_storage_choice(self):
+        if self._storage_prompt_shown:
+            return
+        self._storage_prompt_shown = True
+        if (
+            not is_storage_location_configured()
+            or not is_storage_location_available(get_storage_location())
+        ):
+            self.choose_storage_location()
+
+    def choose_storage_location(self):
+        current = get_storage_location()
+        choices = []
+        for location in STORAGE_LOCATIONS:
+            available = is_storage_location_available(location)
+            marker = "OK" if available else _("niedostępna")
+            selected = " *" if location == current else ""
+            choices.append(("%s [%s]%s" % (location, marker, selected), location))
+        self.session.openWithCallback(
+            self._storage_location_selected,
+            ChoiceBox,
+            title=_("Wybierz lokalizację dla backup i system_backup"),
+            list=choices,
+        )
+
+    def _storage_location_selected(self, choice):
+        if not choice:
+            return
+        location = choice[1]
+        if not is_storage_location_available(location):
+            self.session.open(
+                MessageBox,
+                _("Lokalizacja nie jest dostępna lub nie ma prawa zapisu:\n%s") % location,
+                MessageBox.TYPE_ERROR,
+                timeout=6,
+            )
+            return
+        try:
+            save_storage_location(location)
+            self._refresh_main_info()
+            self.session.open(
+                MessageBox,
+                _("Lokalizacja backupu została zapisana:\n%s") % location,
+                MessageBox.TYPE_INFO,
+                timeout=4,
+            )
+        except Exception as e:
+            self.session.open(
+                MessageBox,
+                _("Nie udało się zapisać lokalizacji backupu:\n%s") % e,
+                MessageBox.TYPE_ERROR,
+                timeout=6,
+            )
 
     # ------------------------------------------------------------------
     # Navigation helpers
@@ -1499,11 +1573,11 @@ class ArchiveScreen(Screen):
     </screen>
     """
 
-    BACKUP_DIR = "/data/RaczQQUpdater/backup"
-
     def __init__(self, session):
         Screen.__init__(self, session)
         self.session = session
+        self.backup_dir = get_plugin_backup_dir()
+        self.backup_dirs = get_backup_search_dirs("plugin")
         self["key_red"]    = StaticText(_("Utwórz archiwum"))
         self["key_green"]  = StaticText(_("Przywróć"))
         self["key_yellow"] = StaticText(_("Odśwież"))
@@ -1559,27 +1633,31 @@ class ArchiveScreen(Screen):
 
     def updateList(self):
         """Build backup list – version reading is done in a background thread to avoid UI freezes."""
-        if not os.path.isdir(self.BACKUP_DIR):
+        if is_storage_location_available(get_storage_location()) and not os.path.isdir(self.backup_dir):
             try:
-                os.makedirs(self.BACKUP_DIR)
+                os.makedirs(self.backup_dir)
             except Exception as e:
                 print("[RaczQQ Updater] Nie mozna utworzyc katalogu backup: %s" % e)
 
-        try:
-            files = sorted(
-                [f for f in os.listdir(self.BACKUP_DIR) if f.endswith(".tar.gz")],
-                reverse=True,
-            )
-        except Exception as e:
-            print("[RaczQQ Updater] Blad listowania backupow: %s" % e)
-            files = []
+        files = []
+        for backup_dir in self.backup_dirs:
+            if not os.path.isdir(backup_dir):
+                continue
+            try:
+                for filename in os.listdir(backup_dir):
+                    if filename.endswith(".tar.gz"):
+                        files.append((filename, os.path.join(backup_dir, filename)))
+            except Exception as e:
+                print("[RaczQQ Updater] Blad listowania backupow %s: %s" % (backup_dir, e))
+        files.sort(key=lambda item: item[0], reverse=True)
 
         # Show placeholder entries immediately while versions load in background.
         placeholder_items = []
-        for filename in files:
-            fullpath = os.path.join(self.BACKUP_DIR, filename)
+        for filename, fullpath in files:
             date_str = self._get_backup_date(fullpath, filename)
-            placeholder_items.append((filename + "  | …", "Data backupu: " + date_str, fullpath, "…", date_str))
+            location = fullpath.split("/RaczQQUpdater/", 1)[0]
+            desc = "Data backupu: %s | %s" % (date_str, location)
+            placeholder_items.append((filename + "  | …", desc, fullpath, "…", date_str))
 
         if not placeholder_items:
             placeholder_items.append((
@@ -1593,12 +1671,12 @@ class ArchiveScreen(Screen):
 
         def load_versions():
             items = []
-            for filename in files:
-                fullpath = os.path.join(self.BACKUP_DIR, filename)
+            for filename, fullpath in files:
                 date_str    = self._get_backup_date(fullpath, filename)
                 version_str = self._get_backup_version(fullpath)
                 title = "%s  | %s" % (filename, version_str)
-                desc  = "Data backupu: %s" % date_str
+                location = fullpath.split("/RaczQQUpdater/", 1)[0]
+                desc  = "Data backupu: %s | %s" % (date_str, location)
                 items.append((title, desc, fullpath, version_str, date_str))
             reactor.callFromThread(self._apply_backup_list, items)
 
@@ -1623,7 +1701,27 @@ class ArchiveScreen(Screen):
         if not os.path.exists(script_path):
             self.session.open(MessageBox, _("Nie znaleziono pliku archive.sh"), MessageBox.TYPE_ERROR, timeout=5)
             return
-        cmd = 'chmod +x "{0}" && "{0}"'.format(script_path)
+        location = get_storage_location()
+        if not is_storage_location_available(location):
+            self.session.open(
+                MessageBox,
+                _("Wybrana lokalizacja backupu nie jest dostępna:\n%s") % location,
+                MessageBox.TYPE_ERROR,
+                timeout=6,
+            )
+            return
+        try:
+            if not os.path.isdir(self.backup_dir):
+                os.makedirs(self.backup_dir)
+        except Exception as e:
+            self.session.open(
+                MessageBox,
+                _("Nie można utworzyć katalogu backup:\n%s") % e,
+                MessageBox.TYPE_ERROR,
+                timeout=6,
+            )
+            return
+        cmd = 'chmod +x "{0}" && "{0}" "{1}"'.format(script_path, self.backup_dir)
         run_command_in_background(self.session, _("Tworzenie archiwum"), [cmd],
                                   callback_on_finish=self.updateList)
 
