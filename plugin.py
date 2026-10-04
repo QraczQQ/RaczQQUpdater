@@ -55,7 +55,7 @@ except NameError:
     def _(txt):
         return txt
 
-PLUGIN_VERSION = "1.2.7"
+PLUGIN_VERSION = "1.2.8"
 
 # ---------------------------------------------------------------------------
 # Paleta interfejsu (dark modern)
@@ -84,6 +84,7 @@ from conf_backup import (
 )
 from addons import AddonsScreen
 from converter import ConverterScreen
+from b4default import B4DefaultInstallScreen
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +485,7 @@ class ChannelListUpdateMenu(Screen):
             ("archive.png", _("Twórz archiwum Pluginu"),          "archive",      _("RaczQQ Updater")),
             ("archive.png", _("Twórz backup plików systemowych"), "conf_backup",  _("Archiwizacja plików systemowych")),
             ("puzzle.png",  _("Instalacja dodatków"),             "addons",       _("Przeglądaj i instaluj pliki *.ipk")),
+            ("puzzle.png",  _("b4Default Skin and App"),          "b4default",     _("Instalacja skina, aplikacji i komponentów")),
             ("convert.png", _("Konwerter oscam<->ncam"),          "converter",    _("Zamiana nazw i treści konfiguracji softcamu")),
         ]
 
@@ -1245,6 +1247,9 @@ class ChannelListUpdateMenu(Screen):
     def open_converter(self):
         self.session.open(ConverterScreen)
 
+    def open_b4default(self):
+        self.session.open(B4DefaultInstallScreen)
+
     def KeyOk(self):
         sel = self["list"].getCurrent()
         if not sel:
@@ -1256,6 +1261,7 @@ class ChannelListUpdateMenu(Screen):
             "archive":     self.open_archive,
             "conf_backup": self.open_conf_backup,
             "addons":      self.open_addons,
+            "b4default":   self.open_b4default,
             "converter":   self.open_converter,
         }
         action = actions.get(sel[2])
